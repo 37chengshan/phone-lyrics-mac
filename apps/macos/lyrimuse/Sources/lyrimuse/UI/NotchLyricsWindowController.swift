@@ -297,7 +297,14 @@ final class NotchLyricsWindowController: NSWindowController, ObservableObject, N
         return NotchMetrics.expandedExtraHeightMax(
             hasLyricPreviewPossible: expandedShowsNextLine ?? LyricSecondaryLine.expandedNextLinePreviewVisible(
                 userToggle: AppSettings.shared.notchExpandedShowsNextLine, secondary: AppSettings.shared.notchSecondaryLine),
-            hasControlsPossible: expandedShowsControls ?? AppSettings.shared.notchExpandedShowsControls,
+            // 手机歌词镜像模式下控制键那颗开关的**实际效果**恒为关:整排都不渲染(见
+            // `NotchLyricsView.expandedContent` 的同一判据)。高度算术必须用同一个值,
+            // 否则卡片会凭空多出 35pt 空的 controlsBlock —— 表现为展开后底部一条莫名其妙的
+            // 空白。`expandedShowsControls` 这个属性本身保持"用户存了什么"不变:设置页那颗
+            // 开关的显示状态、以及以后换回本机播放源时的行为都该照旧。
+            hasControlsPossible: PhonePlaybackBridge.hidesLocalTransportControls
+                ? false
+                : (expandedShowsControls ?? AppSettings.shared.notchExpandedShowsControls),
             trackInfoHeight: trackInfoHeight)
     }
 

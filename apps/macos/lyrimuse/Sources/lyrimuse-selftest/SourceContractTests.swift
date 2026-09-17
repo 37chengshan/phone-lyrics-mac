@@ -2706,4 +2706,105 @@ func runSourceContractTests() {
         expectEqual(offenders, [], "日志规范: 以下位置违反(日志字面量含 CJK / NSLog / 裸 print),规则见 AGENTS.md「日志」")
         expectEqual(subsystems, ["me.yudaotor.lyrimuse"], "日志规范: Logger 的 subsystem 只允许 me.yudaotor.lyrimuse(诊断导出按它查 OSLogStore)")
     }
+
+    // ---- 手机唯一播放源的**写**方向红线(2026-09-17) ----
+    //
+    // 产品规则(P0,见 docs/superpowers/specs/2026-09-17-phone-lyrics-native-architecture-design.md
+    // 第 2.1/2.2 节):手机是唯一播放源,Mac 只同步显示、**绝不**控制播放。这条规则有三层落点,
+    // 每一层漏一处都不会编译报错、也不会让任何页面看起来坏掉,只会在真机上表现成"我点了播放,
+    // 它唱了本机 Music.app 里一首跟手机无关的歌"——所以三层都要钉:
+    //
+    //   ① Core 的写路径:`MusicPlaybackController` 的 dispatch / runAppleScript / runMediaControl
+    //      全部要过 `localControlSuppressed`(它们直接 fork 子进程发指令,是最终出口);
+    //   ② `LocalPlaybackSource.seek` 要在**改本地锚点之前**返回 —— 只拦住发指令是不够的,
+    //      下面那段会把歌词立刻跳到目标位置,而手机压根没跳,表现成松手跳过去、下一拍又弹回来;
+    //   ③ 四个 UI 入口(悬浮层 / 灵动岛 / 菜单栏面板 / 歌词窗口)都要按
+    //      `PhonePlaybackBridge.hidesLocalTransportControls` 收掉整排,否则留下一排死按钮。
+    //
+    // 第 ③ 层额外还要钉住"高度算术跟渲染用同一个值":灵动岛的展开区高度由
+    // `expandedExtraHeightMax(hasControlsPossible:)` 算,渲染由 `expandedContent` 里的 if 决定,
+    // 两处不一致时卡片会凭空多出 35pt 空白。
+    do {
+        let sourcesRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()   // …/Sources
+        func read(_ rel: String) -> String? {
+            try? String(contentsOfFile: sourcesRoot.appendingPathComponent(rel).path, encoding: .utf8)
+        }
+        let corePhone = "LyrimuseCore/Phone/PhonePlaybackBridge.swift"
+        let coreLocal = "LyrimuseCore/Local"
+        let appUI = "lyrimuse/UI"
+        let appMenuBar = "lyrimuse/MenuBar"
+
+        // 判据本身:单点定义在桥接层,四处 UI 都读它而不是各自散落的 isEnabled。
+        if let bridge = read(corePhone) {
+            expectEqual(bridge.contains("public static var hidesLocalTransportControls: Bool"), true,
+                        "手机写方向: PhonePlaybackBridge 要提供 hidesLocalTransportControls 这个单一判据")
+            expectEqual(bridge.contains("hidesLocalTransportControls: Bool { shared.isEnabled }"), true,
+                        "手机写方向: 判据要绑在 isEnabled 上(手机模式下 Mac 自己无条件打开)")
+        } else {
+            expectEqual(true, false, "手机写方向: 读不到 LyrimuseCore/Phone/PhonePlaybackBridge.swift(路径挪了?)")
+        }
+
+        // ① 指令出口三层防线。
+        if let mpc = read("\(coreLocal)/MusicPlaybackController.swift") {
+            expectEqual(mpc.contains("guard !localControlSuppressed else { return }"), true,
+                        "手机写方向: MusicPlaybackController 要有 localControlSuppressed 守卫")
+            // dispatch + runAppleScript + runMediaControl 三处各一道,少一处就有一条绕行的小路。
+            let guards = mpc.components(separatedBy: "guard !localControlSuppressed else { return }").count - 1
+            expectEqual(guards >= 3, true,
+                        "手机写方向: 发指令的三处出口(dispatch/runAppleScript/runMediaControl)都要拦,实际 \(guards) 处")
+        } else {
+            expectEqual(true, false, "手机写方向: 读不到 MusicPlaybackController.swift")
+        }
+
+        // ② seek 必须连本地状态一起不动。
+        if let lps = read("\(coreLocal)/LocalPlaybackSource.swift") {
+            expectEqual(lps.contains("guard !PhonePlaybackBridge.shared.isEnabled else { return }"), true,
+                        "手机写方向: LocalPlaybackSource.seek 要在改锚点之前整条返回,不能只拦发指令")
+        } else {
+            expectEqual(true, false, "手机写方向: 读不到 LocalPlaybackSource.swift")
+        }
+
+        // ③ 四个 UI 入口 + 灵动岛高度算术。
+        let surfaces: [(String, String)] = [
+            ("\(appUI)/LyricsOverlayView.swift", "悬浮层"),
+            ("\(appUI)/NotchLyricsView.swift", "灵动岛"),
+            ("\(appMenuBar)/MenuBarPanel.swift", "菜单栏面板"),
+            ("\(appUI)/LyricsWindowView.swift", "歌词窗口"),
+        ]
+        for (rel, name) in surfaces {
+            guard let text = read(rel) else {
+                expectEqual(true, false, "手机写方向: 读不到 \(rel)(路径挪了?)")
+                continue
+            }
+            expectEqual(text.contains("PhonePlaybackBridge.hidesLocalTransportControls"), true,
+                        "手机写方向: \(name) 要按 hidesLocalTransportControls 收掉播放控制")
+        }
+        if let notch = read("\(appUI)/NotchLyricsView.swift") {
+            expectEqual(notch.contains("controller.expandedShowsControls && !PhonePlaybackBridge.hidesLocalTransportControls"), true,
+                        "手机写方向: 灵动岛展开区三键要连 expandedShowsControls 一起判(只判设置值会画出死按钮)")
+            expectEqual(notch.contains("if !PhonePlaybackBridge.hidesLocalTransportControls {") && 
+                        notch.contains("earControls(alignment: alignment)"), true,
+                        "手机写方向: 耳朵「播放控制」模块同样要收掉(只收展开区不够——它是个独立的入口)")
+        }
+        // 高度算术:真窗口和编辑台舞台都要跟渲染用同一个值,否则卡片多一条 35pt 空白。
+        for (rel, name) in [("\(appUI)/NotchLyricsWindowController.swift", "灵动岛窗口高度"),
+                            ("\(appUI)/NotchEditorStage.swift", "灵动岛编辑台高度")] {
+            guard let text = read(rel) else {
+                expectEqual(true, false, "手机写方向: 读不到 \(rel)(路径挪了?)")
+                continue
+            }
+            expectEqual(text.contains("PhonePlaybackBridge.hidesLocalTransportControls"), true,
+                        "手机写方向: \(name) 的 hasControlsPossible 要跟渲染用同一个判据,否则卡片凭空多一条空白")
+        }
+
+        // 快捷键是第五个入口,没有 UI 可看,漏了只表现成"按了没反应"。
+        if let hotkeys = read("lyrimuse/Settings/GlobalHotkeys.swift") {
+            let gated = hotkeys.components(separatedBy: "guard !PhonePlaybackBridge.hidesLocalTransportControls else { return }").count - 1
+            expectEqual(gated >= 3, true,
+                        "手机写方向: 播放/上一首/下一首三个快捷键都要拦,实际 \(gated) 处")
+        } else {
+            expectEqual(true, false, "手机写方向: 读不到 GlobalHotkeys.swift")
+        }
+    }
 }

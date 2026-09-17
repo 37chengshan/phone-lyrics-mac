@@ -806,7 +806,11 @@ final class MenuBarStatusItem: NSObject {
         // 过门槛、结果画出一排压在图标上的键。**只在没接管时取**:接管期间几何是冻住的,
         // 没有重算的理由。
         if !hoverControlsEngaged { hoverControls.setSlot(currentLyricsSlot()) }
-        let want = hoverInside
+        // 手机歌词镜像模式下"悬停换成三键"这件事整个不发生:手机是唯一播放源,Mac 只同步
+        // 显示、绝不控制播放(见 PhonePlaybackBridge.hidesLocalTransportControls)。指针停在
+        // 歌词上时照旧读歌词,而不是换成一颗按下去毫无反应的播放键。
+        let want = !PhonePlaybackBridge.hidesLocalTransportControls
+            && hoverInside
             && AppSettings.shared.menuBarHoverShowsControls
             && !panelIsOpen
             && (displayClass == "text" || displayClass == "fixed")

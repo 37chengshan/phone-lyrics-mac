@@ -616,11 +616,25 @@ public enum MusicPlaybackController {
     }
 
     private static func dispatch(appleScript: String, mediaControlCommand: String, mediaControlArguments: [String] = []) {
+        guard !localControlSuppressed else { return }
         if PlaybackPlayerPreference.isExclusivelyAppleMusic {
             runAppleScript(appleScript)
         } else {
             runMediaControl(mediaControlCommand, arguments: mediaControlArguments)
         }
+    }
+
+    /// 手机歌词镜像模式下**所有**本机播放控制都必须失效。
+    ///
+    /// 产品规则(P0,见 docs/superpowers/specs/2026-09-17-phone-lyrics-native-architecture-design.md
+    /// 第 2.1 与 2.2 节):手机是唯一播放源,Mac 只同步显示、**绝不**控制播放。
+    ///
+    /// 判据刻意用 `PhonePlaybackBridge.isEnabled`(手机模式下**由 Mac 自己**在启动时无条件打开),
+    /// 而不是「最近有没有收到手机事件」——后者会让 Mac 在手机掉线时"顺手"去控制本机播放器,
+    /// 那正是这条规则要消灭的回退路径:手机没在放歌时,点播放键应该什么都不发生,
+    /// 而不是把 Music.app 拉起来唱一首跟手机无关的歌。
+    private static var localControlSuppressed: Bool {
+        PhonePlaybackBridge.shared.isEnabled
     }
 
     /// 问播放器要状态的超时上限。
@@ -634,6 +648,9 @@ public enum MusicPlaybackController {
     // ⚠️ 下面两个 runXxx 是**发完就不管**(try? process.run(),不等退出),所以它们不会
     // 卡住调用方,不需要走 ProcessRunner。改成等待反而会把"发一条播放指令"变成一次阻塞。
     private static func runAppleScript(_ script: String) {
+        // 见 dispatch 里 localControlSuppressed 的说明:写路径全部从这里过,兜底再拦一道,
+        // 免得以后有人绕过 dispatch 直接发 osascript。
+        guard !localControlSuppressed else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
@@ -658,6 +675,7 @@ public enum MusicPlaybackController {
     // 二进制路径解析复用 MediaControlClient.binaryPath()(同目录,读取状态那条路径
     // 也要用这同一个二进制),不重复各写一份。
     private static func runMediaControl(_ command: String, arguments: [String] = []) {
+        guard !localControlSuppressed else { return }
         guard let binaryPath = MediaControlClient.binaryPath() else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binaryPath)

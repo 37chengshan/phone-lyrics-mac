@@ -2394,31 +2394,36 @@ struct LyricsWindowView: View {
             shuffleButton
             Spacer(minLength: 12)
             HStack(spacing: ctrl(0.116, 18, 48)) {
-            Button {
-                MusicPlaybackController.previousTrack()
-            } label: {
-                Image(systemName: "backward.fill").font(.system(size: ctrl(0.060, 13, 25)))
+            // 手机歌词镜像模式下主三键整组不画:手机是唯一播放源,Mac 只同步显示、绝不
+            // 控制播放(见 PhonePlaybackBridge.hidesLocalTransportControls)。左右两侧的
+            // 随机/循环键同理,它们也操作本机播放器 —— 一起收掉留一条干净的进度条。
+            if !PhonePlaybackBridge.hidesLocalTransportControls {
+                Button {
+                    MusicPlaybackController.previousTrack()
+                } label: {
+                    Image(systemName: "backward.fill").font(.system(size: ctrl(0.060, 13, 25)))
+                }
+                .help(L10n.t("上一首"))
+                Button {
+                    // 走 coordinator 的乐观回声版,不直接发命令:封面缩放/图标点击即动,
+                    // 不等 0.5~1s 的轮询回读(见 userTogglePlayPause 注释)。
+                    PlaybackCoordinator.shared.userTogglePlayPause()
+                } label: {
+                    // 图标跟观感层 isPlayingSmoothed 走(不是 isPlayingNow 真值):点击瞬间
+                    // 翻转,还顺带吸掉切歌间隙真值抖 false 时图标闪一下的毛病。
+                    Image(systemName: playback.isPlayingSmoothed ? "pause.fill" : "play.fill")
+                        .font(.system(size: ctrl(0.079, 17, 33)))
+                        // 播放/暂停两个图标宽度不同,固定住避免两侧按钮跟着跳动
+                        .frame(width: ctrl(0.10, 22, 38))
+                }
+                .help(L10n.t("播放/暂停"))
+                Button {
+                    MusicPlaybackController.nextTrack()
+                } label: {
+                    Image(systemName: "forward.fill").font(.system(size: ctrl(0.060, 13, 25)))
+                }
+                .help(L10n.t("下一首"))
             }
-            .help(L10n.t("上一首"))
-            Button {
-                // 走 coordinator 的乐观回声版,不直接发命令:封面缩放/图标点击即动,
-                // 不等 0.5~1s 的轮询回读(见 userTogglePlayPause 注释)。
-                PlaybackCoordinator.shared.userTogglePlayPause()
-            } label: {
-                // 图标跟观感层 isPlayingSmoothed 走(不是 isPlayingNow 真值):点击瞬间
-                // 翻转,还顺带吸掉切歌间隙真值抖 false 时图标闪一下的毛病。
-                Image(systemName: playback.isPlayingSmoothed ? "pause.fill" : "play.fill")
-                    .font(.system(size: ctrl(0.079, 17, 33)))
-                    // 播放/暂停两个图标宽度不同,固定住避免两侧按钮跟着跳动
-                    .frame(width: ctrl(0.10, 22, 38))
-            }
-            .help(L10n.t("播放/暂停"))
-            Button {
-                MusicPlaybackController.nextTrack()
-            } label: {
-                Image(systemName: "forward.fill").font(.system(size: ctrl(0.060, 13, 25)))
-            }
-            .help(L10n.t("下一首"))
             }
             Spacer(minLength: 12)
             repeatButton

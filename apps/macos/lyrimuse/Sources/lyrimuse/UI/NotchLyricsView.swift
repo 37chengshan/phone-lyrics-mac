@@ -1266,7 +1266,14 @@ struct NotchLyricsView<Chrome: NotchChromeSource>: View {
         case .artwork:
             earArtwork(alignment: alignment)
         case .controls:
-            earControls(alignment: alignment)
+            // 手机歌词镜像模式下这只耳朵整个留白,而不是画三颗点不动的死按钮
+            // (产品规则见 PhonePlaybackBridge.hidesLocalTransportControls)。
+            //
+            // ⚠️ 宽度留白照算:耳朵空间的账记在 `NotchEarModule.minWidth`(48pt)上,
+            // 那笔账管的是布局不会因为播放源换掉而重排。这里只让**内容**不画。
+            if !PhonePlaybackBridge.hidesLocalTransportControls {
+                earControls(alignment: alignment)
+            }
         case .elapsed, .remaining:
             if let anchor = playback.anchor {
                 TimelineView(NotchTimeFormat.clockSchedule(for: anchor)) { _ in
@@ -2130,7 +2137,10 @@ struct NotchLyricsView<Chrome: NotchChromeSource>: View {
             // 2026-09-01 加了 `expandedShowsControls` 开关——关掉后这排键不画,理由见
             // `NotchChromeSource.expandedShowsControls` 的注释(不是唯一入口,`NotchEarModule`
             // 本来就有「播放控制」这个选项)。
-            if controller.expandedShowsControls {
+            // 手机歌词镜像模式下这排键一颗都不画:手机是唯一播放源,Mac 只同步显示、绝不
+            // 控制播放(见 PhonePlaybackBridge.hidesLocalTransportControls)。`expandedShowsControls`
+            // 是用户设置(`showsControlsPossible` 仍按它算),这里是产品规则,优先级更高。
+            if controller.expandedShowsControls && !PhonePlaybackBridge.hidesLocalTransportControls {
                 HStack(spacing: 34) {
                     controlButton("backward.fill", glyphSize: 11.5, hitSize: 22) {
                         MusicPlaybackController.previousTrack()

@@ -383,7 +383,11 @@ struct NotchEditorStage: View {
     private var cardAreaHeight: CGFloat {
         chrome.contentTopInset + NotchMetrics.compactRowHeight + NotchMetrics.expandedExtraHeightMax(
             hasLyricPreviewPossible: chrome.expandedShowsNextLine,
-            hasControlsPossible: chrome.expandedShowsControls,
+            // 跟真窗口 `NotchLyricsWindowController.expandedExtraHeight` 同一判据:手机歌词
+            // 镜像模式下控制键整排不渲染,高度里那 35pt 的 controlsBlock 也就不该占。
+            // 舞台钉着用户设置值的话,预览会比真窗口高一条——而舞台的用途正是"看清楚这些
+            // 设置会让展开区多高",对不上就失去了意义。
+            hasControlsPossible: PhonePlaybackBridge.hidesLocalTransportControls ? false : chrome.expandedShowsControls,
             trackInfoHeight: NotchMetrics.expandedTrackInfoHeight(
                 showsArtwork: chrome.expandedTrackInfoShowsArtwork,
                 showsTitle: chrome.expandedTrackInfoShowsTitle,

@@ -956,9 +956,18 @@ struct LyricsOverlayView<Chrome: OverlayChromeSource>: View {
         // 2026-08-29 用户反馈"整体按钮太大,挡桌面",间距从 15 收到 5——这排常驻在歌词
         // 上方,越小越不挡视线,跟下面 iconButton 的收尺寸是同一次改动。
         HStack(spacing: 5) {
-            iconButton(.previous, "backward.fill")
-            iconButton(.playPause, playback.isPlayingNow ? "pause.fill" : "play.fill", primary: true)
-            iconButton(.next, "forward.fill")
+            // 手机歌词镜像模式下整排播放控制都不画:手机是唯一播放源,Mac 只同步显示、
+            // 绝不控制播放,这三颗在 Mac 上没有可达效果(见 PhonePlaybackBridge
+            // .hidesLocalTransportControls)。"喜欢"那颗也在这一组里,理由同一个 —— 它操作的
+            // 是本机 Apple Music 的资料库,跟手机上正在放的这首歌无关。
+            //
+            // ⚠️ 右边那条竖线和窗口级四键**保留**:展开/设置/锁定/关闭操作的是这扇悬浮窗
+            // 自己,跟谁是播放源无关。只藏左侧这组,分隔线仍然分隔着两组不同的东西。
+            if !PhonePlaybackBridge.hidesLocalTransportControls {
+                iconButton(.previous, "backward.fill")
+                iconButton(.playPause, playback.isPlayingNow ? "pause.fill" : "play.fill", primary: true)
+                iconButton(.next, "forward.fill")
+            }
             // 「喜欢」——对应 Apple Music 里那颗心(脚本字典里的 favorited)。只有 Apple Music
             // 有这个概念,所以 playback.isFavorited 为 nil(别的播放器/没拿到自动化权限)时整个
             // 按钮不出现,而不是显示一颗永远点不亮的心。跟前面三个播放按钮同属"对当前这首歌
@@ -967,7 +976,7 @@ struct LyricsOverlayView<Chrome: OverlayChromeSource>: View {
             // 不走 controlButton:那个包装是为播放控制准备的(先查权限、被拒就 NSSound.beep()),
             // 而这里的权限检查和乐观更新都在 PlaybackCoordinator.toggleFavorited() 里一起做了,再套一层会
             // 变成查两遍权限。
-            if let favorited = playback.isFavorited {
+            if !PhonePlaybackBridge.hidesLocalTransportControls, let favorited = playback.isFavorited {
                 // .help() 去掉了:窗口常年点击穿透,SwiftUI 连 hover 都收不到,那个 tooltip
                 // 永远不会弹出来 —— 留着只是一段看起来有效、其实永不触发的死代码。
                 // (同一对文案在「歌词窗口」那颗心上仍在用,本地化条目不受影响。)
@@ -980,9 +989,13 @@ struct LyricsOverlayView<Chrome: OverlayChromeSource>: View {
             // (见 body 里 isHoveringForControls && !playback.lockPosition 那个条件),换成
             // 悬浮在歌词上方的"解锁"提示(见 unlockPill)。淡到 0.18(原 0.25)——2026-08-29
             // 视觉打磨的一部分,配合下面变窄的胶囊,分隔线也收得更柔和。
-            Rectangle()
-                .fill(Color.white.opacity(0.18))
-                .frame(width: 1, height: 12)
+            // ⚠️ 手机模式下左侧那组整组不画,这条线也跟着收掉:它分隔的是"对这首歌的操作"
+            // 和"窗口级操作",左边空了之后它就变成排首一道没有分组意义的竖线。
+            if !PhonePlaybackBridge.hidesLocalTransportControls {
+                Rectangle()
+                    .fill(Color.white.opacity(0.18))
+                    .frame(width: 1, height: 12)
+            }
             // 2026-08-29 参考 QQ 音乐悬浮歌词补的三个按钮。相对顺序原来照抄参考图
             // (展开 → 锁定 → 设置 → 关闭),2026-08-31 用户要求把**锁定和设置对调**,
             // 现在是 展开 → 设置 → 锁定 → 关闭。

@@ -28,6 +28,17 @@ public final class PhonePlaybackBridge: @unchecked Sendable {
         return enabled
     }
 
+    /// 手机歌词镜像模式下,本机播放控制整排都不该显示。
+    ///
+    /// 产品规则(P0):手机是唯一播放源,Mac 只同步显示、绝不控制播放,所以播放/暂停/
+    /// 上一首/下一首/拖进度这几件事在 Mac 上没有任何可达效果。留着它们是**死按钮** ——
+    /// 点了什么都不发生比压根没有这个按钮更糟,用户会以为 App 卡了或者以为能遥控手机。
+    ///
+    /// 单独立一个名字而不是各处直接读 `isEnabled`:这个判据服务的是 UI 可见性,语义上跟
+    /// "桥接有没有开"是两件事,以后要按连接状态细分(比如只在真的配对过之后才藏)时,
+    /// 改这一处就够,四个 UI 面不用各改一遍。
+    public static var hidesLocalTransportControls: Bool { shared.isEnabled }
+
     @discardableResult
     public func ingest(_ envelope: PhonePlaybackEnvelope, receivedAtMs: Int64 = PhonePlaybackBridge.monotonicNowMs()) -> Bool {
         lock.lock()

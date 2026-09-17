@@ -535,13 +535,17 @@ private struct MenuBarPanelView: View {
                 durationMs: playback.currentDurationMs,
                 trackLyricsOffsetMs: playback.trackLyricsOffsetMs,
                 lyricsOffsetStepMs: playback.lyricsOffsetStepMs)
-            HStack(spacing: 28) {
-                controlButton("backward.fill", size: 13) { MusicPlaybackController.previousTrack() }
-                controlButton(playback.isPlayingNow ? "pause.fill" : "play.fill", size: 18) {
-                    // 乐观回声版:歌词窗封面缩放/图标点击即动(见 userTogglePlayPause)。
-                    PlaybackCoordinator.shared.userTogglePlayPause()
+            // 手机歌词镜像模式下三键不画:手机是唯一播放源,Mac 只同步显示、绝不控制播放
+            // (见 PhonePlaybackBridge.hidesLocalTransportControls)。
+            if !PhonePlaybackBridge.hidesLocalTransportControls {
+                HStack(spacing: 28) {
+                    controlButton("backward.fill", size: 13) { MusicPlaybackController.previousTrack() }
+                    controlButton(playback.isPlayingNow ? "pause.fill" : "play.fill", size: 18) {
+                        // 乐观回声版:歌词窗封面缩放/图标点击即动(见 userTogglePlayPause)。
+                        PlaybackCoordinator.shared.userTogglePlayPause()
+                    }
+                    controlButton("forward.fill", size: 13) { MusicPlaybackController.nextTrack() }
                 }
-                controlButton("forward.fill", size: 13) { MusicPlaybackController.nextTrack() }
             }
         }
         .padding(10)

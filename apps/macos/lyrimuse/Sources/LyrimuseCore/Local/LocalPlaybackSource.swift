@@ -2209,6 +2209,16 @@ public final class LocalPlaybackSource: ObservableObject {
     }
 
     public func seek(toMs targetMs: Int) {
+        // 手机歌词镜像模式下 seek 是**真正的 no-op**,不只是不把指令发出去。
+        //
+        // 产品规则(P0):手机是唯一播放源,Mac 只同步显示、绝不控制播放,所以拖动进度条
+        // 不该改变任何东西。这里必须连**本地状态**一起拦住:下面那段会把锚点直接挪到目标
+        // 位置、歌词立刻跳到新的一句(为了拖动时跟手),而手机那边压根没跳 —— 表现成松手
+        // 看到歌词跳过去、下一拍心跳又跳回来。宁可让手势什么都不发生,也不要这种假动作。
+        //
+        // 拦在这一层而不是四个 UI 调用点(菜单栏面板/灵动岛/歌词窗口/悬浮层):这里的入口
+        // 唯一,以后再加进度条也自动受这条规则管。
+        guard !PhonePlaybackBridge.shared.isEnabled else { return }
         let clampedMs = max(0, min(targetMs, currentDurationMs ?? targetMs))
         let seconds = Double(clampedMs) / 1000
         // .auto/多选模式下要按"这一刻实际在播的是谁"选后端,不能只看设置值——只要不是排他地

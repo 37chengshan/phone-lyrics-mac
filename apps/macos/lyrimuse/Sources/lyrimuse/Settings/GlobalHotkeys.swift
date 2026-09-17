@@ -141,6 +141,11 @@ enum GlobalHotkeys {
         // 的 onKeyUp 回调本身是同步闭包,用 Task { ... } 包一层去调用异步版本。
         KeyboardShortcuts.onKeyUp(for: .playPauseHotkey) {
             Task {
+                // 手机歌词镜像模式下这三个键整组失效:手机是唯一播放源,Mac 只同步显示、
+                // 绝不控制播放(见 PhonePlaybackBridge.hidesLocalTransportControls)。
+                // 跟其它四个入口同一条判据 —— 快捷键这条最容易被漏掉,因为它没有 UI、
+                // 按了没反应只会被当成"快捷键坏了"。
+                guard !PhonePlaybackBridge.hidesLocalTransportControls else { return }
                 guard await MusicAutomationPermission.checkForCurrentPlayerSafely(askIfNeeded: true) else {
                     NSSound.beep()
                     return
@@ -151,6 +156,7 @@ enum GlobalHotkeys {
         }
         KeyboardShortcuts.onKeyUp(for: .nextTrackHotkey) {
             Task {
+                guard !PhonePlaybackBridge.hidesLocalTransportControls else { return }
                 guard await MusicAutomationPermission.checkForCurrentPlayerSafely(askIfNeeded: true) else {
                     NSSound.beep()
                     return
@@ -160,6 +166,7 @@ enum GlobalHotkeys {
         }
         KeyboardShortcuts.onKeyUp(for: .previousTrackHotkey) {
             Task {
+                guard !PhonePlaybackBridge.hidesLocalTransportControls else { return }
                 guard await MusicAutomationPermission.checkForCurrentPlayerSafely(askIfNeeded: true) else {
                     NSSound.beep()
                     return
