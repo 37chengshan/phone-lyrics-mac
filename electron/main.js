@@ -64,9 +64,9 @@ let connected = false;
 let lyricsFetchSeq = 0;
 
 function trayImage() {
-  return nativeImage
-    .createFromBuffer(Buffer.from(TRAY_PNG, 'base64'))
-    .resize({ width: 16, height: 16 });
+  const img = nativeImage.createFromBuffer(Buffer.from(TRAY_PNG, 'base64'));
+  img.setTemplateImage(true);
+  return img;
 }
 
 function computePositionMs() {
@@ -437,22 +437,45 @@ function registerIpc() {
   ipcMain.handle('open-log', () => shell.openPath(LOG_PATH));
 }
 
-app.whenReady().then(async () => {
-  log('app ready');
-  registerIpc();
-  createTray();
-  createOverlay();
-  await startServer(settings.port);
-  startTicker();
-  createSettings();
-  broadcastState();
-});
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (settingsWin && !settingsWin.isDestroyed()) {
+      settingsWin.show();
+      settingsWin.focus();
+    }
+  });
+
+  app.whenReady().then(async () => {
+    if (process.platform === 'darwin') {
+      try {
+        app.dock.hide();
+      } catch {}
+    }
+    log('app ready');
+    registerIpc();
+    createTray();
+    createOverlay();
+    await startServer(settings.port);
+    startTicker();
+    createSettings();
+    broadcastState();
+  });
+}
 
 app.on('window-all-closed', () => {
   // keep tray
 });
 
-app.on('before-quit', async () => {
+app.on('before-quit', () => {
   if (ticker) clearInterval(ticker);
-  if (server) await server.stop();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+  if (server) {
+    server.stop().catch(() => {});
+  }
 });
