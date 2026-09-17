@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "手机连接" : { "extractionState" : "manual" },
+    "手机 QQ 音乐" : { "extractionState" : "manual" },
+    "手机是唯一播放源；Mac 只同步显示，不会控制手机。" : { "extractionState" : "manual" },
+    "自动发现" : { "extractionState" : "manual" },
+    "已通过 Bonjour 发布" : { "extractionState" : "manual" },
+    "服务正在启动或等待网络" : { "extractionState" : "manual" },
+    "配对" : { "extractionState" : "manual" },
+    "连接新手机" : { "extractionState" : "manual" },
+    "配对码只使用一次，设备令牌保存在系统安全存储中。" : { "extractionState" : "manual" },
+    "生成配对码" : { "extractionState" : "manual" },
+    "在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。" : { "extractionState" : "manual" },
+    "换一个新配对码" : { "extractionState" : "manual" },
+    "手动连接备用地址" : { "extractionState" : "manual" },
+    "自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。" : { "extractionState" : "manual" },
+    "已配对设备" : { "extractionState" : "manual" },
+    "移除" : { "extractionState" : "manual" },
+    "等待手机" : { "extractionState" : "manual" },
+    "手机已连接" : { "extractionState" : "manual" },
+    "连接不稳定" : { "extractionState" : "manual" },
+    "手机已离线" : { "extractionState" : "manual" },
     "搜索设置" : {
       "extractionState" : "manual",
       "localizations" : {

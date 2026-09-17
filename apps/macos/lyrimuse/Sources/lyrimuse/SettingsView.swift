@@ -45,7 +45,7 @@ enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .lyrics: return L10n.t("歌词")
-        case .player: return L10n.t("播放器")
+        case .player: return L10n.t("手机连接")
         // 2026-08-17 从「外观」改成这个。原名错在三处:① 这一页的第一层结构是按**展示
         // 方式**分的四个分段(悬浮歌词/灵动岛/菜单栏/其它),讲的是"歌词显示在哪儿",不是
         // "外观";② 它**不含** App 真正的外观项 —— 菜单栏图标和 Dock 图标都在「通用」,
@@ -61,7 +61,7 @@ enum SettingsTab: String, Hashable, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .lyrics: return "text.quote"
-        case .player: return "play.circle"
+        case .player: return "iphone.and.arrow.forward"
         // 画笔是"外观"的语言,跟着改名一起换掉。rectangle.3.group 读出来是"同一份内容摆在
         // 好几处",正对上这一页的实际结构(歌词能出现在三个地方);也不跟侧边栏现有的
         // text.quote/play.circle/keyboard/gearshape/info.circle 撞。
@@ -387,7 +387,7 @@ struct SettingsView: View {
             Group {
                 switch selection {
                 case .tab(.lyrics): LyricsSettingsTab()
-                case .tab(.player): PlayerSettingsTab()
+                case .tab(.player): PhoneSettingsTab()
                 case .tab(.appearance): AppearanceSettingsTab()
                 case .tab(.shortcuts): ShortcutsSettingsTab()
                 case .tab(.general): GeneralSettingsTab()
@@ -2938,6 +2938,128 @@ private final class PlayerTabStores: ObservableObject {
         ]
     }
 
+}
+
+private struct PhoneSettingsTab: View {
+    @ObservedObject private var service = PhonePlaybackService.shared
+    @State private var heartbeatStatus: PhoneConnectionStatus = .waiting
+
+    var body: some View {
+        SettingsPage(title: L10n.t("手机连接")) {
+            SettingsCard {
+                SettingsCardHeader(title: L10n.t("手机 QQ 音乐"))
+                SettingsRow(
+                    icon: statusIcon,
+                    title: statusTitle,
+                    subtitle: L10n.t("手机是唯一播放源；Mac 只同步显示，不会控制手机。")
+                ) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 9, height: 9)
+                        .accessibilityLabel(statusTitle)
+                }
+                CardDivider()
+                SettingsRow(
+                    icon: "network",
+                    title: L10n.t("自动发现"),
+                    subtitle: service.serverStatus == "ready"
+                        ? L10n.t("已通过 Bonjour 发布") : L10n.t("服务正在启动或等待网络")
+                ) { EmptyView() }
+            }
+
+            SettingsCard {
+                SettingsCardHeader(title: L10n.t("配对"))
+                if let code = service.pairingCode, code.expiresAt > Date() {
+                    SettingsRawRow {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(code.value)
+                                .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text(L10n.t("在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。"))
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else {
+                    SettingsRow(
+                        icon: "lock.shield",
+                        title: L10n.t("连接新手机"),
+                        subtitle: L10n.t("配对码只使用一次，设备令牌保存在系统安全存储中。")
+                    ) {
+                        Button(L10n.t("生成配对码")) { _ = service.beginPairing() }
+                    }
+                }
+                if service.pairingCode != nil {
+                    CardDivider()
+                    SettingsRawRow {
+                        Button(L10n.t("换一个新配对码")) { _ = service.beginPairing() }
+                    }
+                }
+            }
+
+            SettingsCard {
+                SettingsCardHeader(title: L10n.t("手动连接备用地址"))
+                SettingsRawRow {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(service.manualAddresses, id: \.self) { address in
+                            Text(address)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                        Text(L10n.t("自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。"))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
+            if !service.pairedDevices.isEmpty {
+                SettingsCard {
+                    SettingsCardHeader(title: L10n.t("已配对设备"))
+                    ForEach(Array(service.pairedDevices.enumerated()), id: \.element.deviceId) { index, device in
+                        if index > 0 { CardDivider() }
+                        SettingsRow(icon: "iphone", title: device.name, subtitle: device.deviceId) {
+                            Button(L10n.t("移除"), role: .destructive) { service.revoke(deviceId: device.deviceId) }
+                        }
+                    }
+                }
+            }
+        }
+        .id(L10n.current)
+        .onAppear { heartbeatStatus = service.connectionStatus }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            heartbeatStatus = service.connectionStatus
+        }
+    }
+
+    private var statusTitle: String {
+        switch heartbeatStatus {
+        case .waiting: return L10n.t("等待手机")
+        case .connected: return L10n.t("手机已连接")
+        case .unstable: return L10n.t("连接不稳定")
+        case .offline: return L10n.t("手机已离线")
+        }
+    }
+
+    private var statusIcon: String {
+        switch heartbeatStatus {
+        case .connected: return "iphone.radiowaves.left.and.right"
+        case .unstable: return "wifi.exclamationmark"
+        case .offline: return "iphone.slash"
+        case .waiting: return "iphone"
+        }
+    }
+
+    private var statusColor: Color {
+        switch heartbeatStatus {
+        case .connected: return .green
+        case .unstable: return .orange
+        case .offline: return .red
+        case .waiting: return .secondary
+        }
+    }
 }
 
 private struct PlayerSettingsTab: View {

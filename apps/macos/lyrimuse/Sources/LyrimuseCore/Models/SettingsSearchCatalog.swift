@@ -109,6 +109,11 @@ public enum SettingsSearchCatalog {
                             pathKeys: ["播放器"] + (group.map { [$0] } ?? []))
     }
 
+    private static func phone(_ title: String, sub: String? = nil, kw: [String] = []) -> SettingsSearchEntry {
+        SettingsSearchEntry(destination: .tab("player"), titleKey: title, subtitleKey: sub, keywords: kw,
+                            pathKeys: ["手机连接"])
+    }
+
     private static func surface(_ surface: LyricsSurface, _ title: String, alt: [String] = [], sub: String? = nil,
                                 kw: [String] = [], group: String? = nil, inDrawer: Bool = true) -> SettingsSearchEntry {
         let sectionTitle: String
@@ -179,6 +184,13 @@ public enum SettingsSearchCatalog {
         lyrics("manage", "歌词文件夹", kw: ["lyrics", "自定义位置", "目录", "lrc"]),
 
         // ---- 播放器 ----
+        phone("手机 QQ 音乐", kw: ["Android", "QQ音乐", "播放源", "同步"]),
+        phone("手机是唯一播放源；Mac 只同步显示，不会控制手机。", kw: ["单向同步"]),
+        phone("自动发现", kw: ["Bonjour", "mDNS", "局域网"]),
+        phone("配对", kw: ["配对码", "6位码", "token"]),
+        phone("连接新手机", kw: ["配对", "Android"]),
+        phone("手动连接备用地址", kw: ["IP", "端口", "8765"]),
+        phone("已配对设备", kw: ["撤销", "移除", "token"]),
         player("播放器", kw: ["Apple Music", "QQ音乐", "网易云音乐", "酷狗音乐", "Spotify", "自动识别", "多选"]),
         player("网页播放器", kw: ["YouTube Music", "Spotify", "浏览器", "Chrome", "Safari", "Edge", "Arc"]),
         player("已信任的播放器", kw: ["信任列表", "其它播放器"]),

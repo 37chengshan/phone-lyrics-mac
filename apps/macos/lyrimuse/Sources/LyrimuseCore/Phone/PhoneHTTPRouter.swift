@@ -5,6 +5,7 @@ public final class PhoneHTTPRouter: @unchecked Sendable {
     private var pairingStore: PhonePairingStore
     public private(set) var lastAcceptedEnvelope: PhonePlaybackEnvelope?
     public var onPlayback: ((PhonePlaybackEnvelope) -> Void)?
+    public var onPairingChanged: (() -> Void)?
 
     public init(pairingStore: PhonePairingStore) {
         self.pairingStore = pairingStore
@@ -16,6 +17,15 @@ public final class PhoneHTTPRouter: @unchecked Sendable {
 
     public func route(_ request: PhoneHTTPRequest, now: Date = Date()) -> PhoneHTTPResponse {
         lock.withLock { routeLocked(request, now: now) }
+    }
+
+    public var pairedDevices: [PhonePairingDevice] {
+        lock.withLock { pairingStore.pairedDevices }
+    }
+
+    public func revoke(deviceId: String) {
+        lock.withLock { pairingStore.revoke(deviceId: deviceId) }
+        onPairingChanged?()
     }
 
     private func routeLocked(_ request: PhoneHTTPRequest, now: Date) -> PhoneHTTPResponse {
@@ -55,6 +65,7 @@ public final class PhoneHTTPRouter: @unchecked Sendable {
                 device: PhonePairingDevice(deviceId: deviceId, name: deviceName),
                 peer: request.peer,
                 now: now)
+            onPairingChanged?()
             return .json(status: 200, object: [
                 "deviceId": credential.device.deviceId,
                 "protocolVersion": 1,
