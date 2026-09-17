@@ -57,10 +57,10 @@ func runPhonePairingTests() {
         // 真机那台机器的实际形态:en0 是默认路由,utun5 是代理插进来的隧道。
         expectEqual(
             PhoneAddressFilter.visible([
-                (interface: "en0", address: "10.24.95.92:8765"),
+                (interface: "en0", address: "192.168.1.100:8765"),
                 (interface: "utun5", address: "198.18.0.1:8765"),
             ], primaryInterface: "en0"),
-            ["10.24.95.92:8765"],
+            ["192.168.1.100:8765"],
             "手动地址: 只列真实网卡,隧道地址不出现(列两条会让人挑错,真机踩过)")
 
         // 隧道一律不出现,哪怕它是唯一带 IPv4 的那块。

@@ -277,7 +277,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         android:background="@drawable/input_bg"
-                        android:hint="例如 10.24.95.92"
+                        android:hint="例如 192.168.1.100"
                         android:inputType="textUri"
                         android:padding="12dp"
                         android:textColor="#EEF1F5"
