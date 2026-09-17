@@ -6,7 +6,7 @@
   "scripts": {
     "start": "electron .",
     "demo": "python3 -m http.server 5173",
-    "test:lrc": "node scripts/test-lrc.js"
+    "test:lrc": "node test-lrc.js"
   },
   "dependencies": {
     "electron": "^33.2.0"

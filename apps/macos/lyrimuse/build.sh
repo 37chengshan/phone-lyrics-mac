@@ -118,7 +118,13 @@ LOG_FILE="$HOME/Library/Logs/lyrimuse.log"
 # 不带 hash 后缀,保持"干净三段数字"这条硬约束,但至少不会常年停在一个早就过时的
 # 占位值上;真拿不到 tag(比如浅克隆、不是 git 仓库)才退到 0.0.0 这个一眼假的占位值,
 # 不会看着像一个正常但过时的版本号。
-APP_VERSION="${LYRIMUSE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')}"
+# ⚠️ 上游这行在 `set -euo pipefail` 下有个**一直没生效**的兜底:管道里 `git describe` 失败时,
+# 按管道语义整条 `$(...)` 是非零,赋值语句本身也就成了非零 —— 于是脚本在**这一行**就退出
+# (实测退出码 128),永远走不到下面那句 "为空就当 0.0.0"。只是上游仓库恰好有 tag,所以没
+# 人撞上;本仓是从上游 subtree 导入的、一个 tag 都没有,于是 `build.sh` 直接跑不起来。
+# 补一个 `|| true` 让管道失败不再掐断脚本,兜底那行才真的可及 —— 这跟它注释里写的预期
+# 行为(拿不到 tag 退到 0.0.0 这个一眼假的占位值)完全一致。
+APP_VERSION="${LYRIMUSE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)}"
 [ -z "$APP_VERSION" ] && APP_VERSION="0.0.0"
 # CFBundleVersion(Sparkle 比大小用的构建号)由 scripts/build-version.sh 从展示版本算出 —— 映射只有那一份,
 # release.yml 生成 appcast 时从这里写进 Info.plist 的值回读、selftest 拿它跟 Core 的 ReleaseVersion 交叉校验。

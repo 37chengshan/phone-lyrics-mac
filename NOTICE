@@ -1,0 +1,41 @@
+# 归属与许可 / Attribution and License
+
+本仓库是 **Lyrimuse** 的修改版(GPL-3.0-or-later)。
+This repository is a modified version of **Lyrimuse**, licensed GPL-3.0-or-later.
+
+## 上游 / Upstream
+
+* 项目 / Project: Lyrimuse — https://github.com/Yudaotor/lyrimuse
+* 基线提交 / Baseline commit: `e6bdf6a4563de91f88621c37645b8d11072cb822`
+* 导入日期 / Imported: 2026-09-17
+* 导入方式 / Method: `git subtree add --prefix=apps/macos lyrimuse-upstream main --squash`
+* 上游源码在本仓的位置 / Location in this repo: `apps/macos/`
+* 同步步骤 / Sync procedure: 见 `docs/upstream/lyrimuse.md`
+
+## 本仓库的改动 / Changes in this repository
+
+相对上游基线,本仓库做了这些修改(按 GPL-3.0 第 5 节,这些改动同样以 GPL-3.0-or-later 授权):
+
+1. 播放源换成 Android 端 QQ 音乐。Mac 不再读取本机播放器,而是通过局域网接收一个
+   带鉴权的版本化协议(见 `packages/protocol/`)。
+2. Mac **只**同步显示,**绝不**控制播放:所有本机播放指令与进度拖动都已停用
+   (见 `MusicPlaybackController` / `LocalPlaybackSource.seek` 的守卫)。
+3. 新增六位一次性配对码换取设备令牌的配对流程、Bonjour 自动发现,以及手动地址兜底。
+4. 新增 Android 伴随应用 `apps/android/PhoneLyricsRelay`:捕获 QQ 音乐 MediaSession、
+   按序发送事件与心跳、发现并配对 Mac。
+5. 歌词管线改从手机快照读取(`phone-now-playing.json`),不再依赖本机播放器采集。
+6. 设置页的「播放器」分类换成「手机连接」。
+
+上游原有的功能(多源歌词解析与评分、逐字歌词、翻译、罗马音、繁简转换、桌面悬浮歌词、
+灵动岛、菜单栏歌词、歌词管理、主题、Last.fm 等)全部保留。
+
+## 许可 / License
+
+* 完整许可全文见 `LICENSE`(GNU General Public License v3.0)
+* 上游随源码附带的第三方许可清单见 `apps/macos/THIRD_PARTY_LICENSES`
+
+## 源码可获得性 / Corresponding source
+
+分发的二进制(Mac App 与 Android APK)都构建自本仓库。按 GPL-3.0,拿到这些二进制的
+任何人都可以从本仓库取得对应源码,包括上面列出的全部修改。
+

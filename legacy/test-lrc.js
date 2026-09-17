@@ -1,7 +1,8 @@
 const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { parseLRC, locateLine } = require('../shared/lrc');
+// 本文件 2026-09-17 随 Electron 原型一起搬进 legacy/,shared/ 的深度少了一层。
+const { parseLRC, locateLine } = require('./shared/lrc');
 
 test('parseLRC multi timestamps and fractions', () => {
   const lines = parseLRC(
