@@ -1,0 +1,17 @@
+{
+  "bundle_ids": ["com.apple.Music"],
+  "listenbrainz_token": "",
+  "listenbrainz_user": "",
+  "api_root": "",
+  "state_relay_url": "",
+  "state_relay_token": "",
+  "lastfm_user": "",
+  "lastfm_api_key": "",
+  "lastfm_scrobble_api_key": "",
+  "lastfm_scrobble_secret": "",
+  "lastfm_scrobble_session_key": "",
+  "notification_platform": "",
+  "bark_url": "",
+  "dingtalk_sign_secret": "",
+  "feishu_sign_secret": ""
+}

@@ -1,0 +1,297 @@
+import AppKit
+import LyrimuseCore
+
+// 菜单栏歌词跑马灯的渲染侧(2026-08-15 加)——把一行歌词画成一整条长图,交给
+// MenuBarScrollingLabel 里的 CALayer 当内容,由 Core Animation 平移。
+//
+// 为什么要画成图片,而不是发布一个字符串让文本控件去渲染:
+// 平滑滚动的最小单位必须是**像素**,而文本能表达的最小单位是**一个字**。按字取窗那版
+// (2026-08-15 前)每 0.25 秒整体平移一个字,本质上是 4fps 的动画,肉眼看就是一跳一跳;
+// 而且一个窗口固定 N 个字符、字符宽度却不相等(英文 'i' 和 'm' 差一倍,中文又比拉丁宽得多),
+// 每跳一次这段文字的像素宽度也在变,菜单栏项跟着伸缩,把右边其它 App 的图标一起顶得左右晃。
+// 图片这条路两个问题一起解决:宽度由我们钉死,偏移可以是任意小数。
+//
+// ⚠️ 2026-08-16 之前这里画的是**模板图**(isTemplate = true),靠系统按浅色/深色/反白
+// 自动上色。改成自建 NSStatusItem 之后我们自己拿着图层,没有系统的模板处理这一层了,
+// 所以颜色改由调用方显式传进来(见 MenuBarScrollingLabel.tintColor:平时 labelColor、
+// 菜单打开时 selectedMenuItemTextColor,都在按钮当前的 effectiveAppearance 下解析)。
+@MainActor
+enum MenuBarMarqueeRenderer {
+    /// 跟系统菜单栏项同一套字体族;**粗细**(`menuBarLyricsFontWeight`,2026-09-03 加)和**字号**
+    /// (`menuBarLyricsFontSize`,同日用户要求追加,0 = 跟随系统)听用户的。跟随系统时字号取
+    /// `menuBarFont(ofSize: 0)` 的 pointSize,不要写死数字,否则系统字号变了这行歌词会跟旁边的
+    /// 菜单项不齐。
+    ///
+    /// 实测(2026-09-03,本机 SF 13pt):六档字重的 ascender/descender 完全相同 → `lineHeight` 不随
+    /// 字重变,固定宽度模式下槽位几何一像素不动;中文各档同宽(只变笔画),拉丁字随字重变宽
+    /// (medium +2%、semibold +3.5%、bold +5.6%、heavy +8.6%),自适应模式下换档那一刻槽宽变一次。
+    /// 默认档 `.regular` 与 `menuBarFont(ofSize: 0)` 逐点同宽同高,直接返回后者,老用户零变化。
+    static var font: NSFont {
+        let settings = AppSettings.shared
+        return font(weight: settings.menuBarLyricsFontWeight, size: settings.menuBarLyricsFontSize)
+    }
+
+    /// 字号可选的合法区间(2026-09-03 加字号)。上限由状态栏项按钮的高度推出来:`NSStatusBar.system
+    /// .thickness` 恒 22pt(带刘海的机器菜单栏本身 33pt 高,按钮仍是 22),而 `lineHeight` 逐字号实测
+    /// 13→18 / 14→19 / 15→20 / 16→21 / 17→23 —— 17pt 起装不下,那张撑槽宽的透明占位图会被按钮按比例
+    /// 缩小、槽宽跟着失真。下限 10pt 之下在菜单栏里已经读不清。存量配置越界时夹回区间,不崩不留空白。
+    static let fontSizeRange: ClosedRange<CGFloat> = 10...16
+
+    /// 系统菜单栏此刻的字号(本机 13)。设置里 0 = 跟随它。
+    static var systemPointSize: CGFloat { NSFont.menuBarFont(ofSize: 0).pointSize }
+
+    /// - Parameter size: 0 = 跟随系统字号;其余按点数,越界夹回 `fontSizeRange`。
+    static func font(weight: OverlayFontWeight, size: CGFloat) -> NSFont {
+        let pointSize = size > 0
+            ? min(max(size, fontSizeRange.lowerBound), fontSizeRange.upperBound)
+            : systemPointSize
+        return font(weight: weight, pointSize: pointSize)
+    }
+
+    /// 不夹区间的底层版本:双排(副行)那两行的 10 / 9pt 低于单行滑杆的下限 10,走不了上面那个。
+    static func font(weight: OverlayFontWeight, pointSize: CGFloat) -> NSFont {
+        // regular 走 menuBarFont(ofSize:) 而不是 systemFont:两者实测逐点同宽同高,但前者才是
+        // "菜单栏那套字体"这个语义本身,系统将来换菜单栏字体时它跟得上。
+        guard weight != .regular else { return NSFont.menuBarFont(ofSize: pointSize) }
+        return NSFont.systemFont(ofSize: pointSize, weight: weight.nsWeight)
+    }
+
+    // MARK: - 双排(副行,2026-09-06)
+
+    /// 双排时主行的字体:10pt(`MenuBarLyricRows.mainPointSize`),粗细听用户的,字号滑杆不生效(为什么见
+    /// MenuBarLyricRows 头注)。
+    static var doubleRowMainFont: NSFont {
+        font(weight: AppSettings.shared.menuBarLyricsFontWeight, pointSize: MenuBarLyricRows.mainPointSize)
+    }
+
+    /// 双排时副行的字体:9pt,粗细跟主行同一档。
+    static var doubleRowSecondaryFont: NSFont {
+        font(weight: AppSettings.shared.menuBarLyricsFontWeight, pointSize: MenuBarLyricRows.secondaryPointSize)
+    }
+
+    /// 画主行**这段文字**用的字体,单行 / 双排两种口径的唯一入口。占位符 ♪ 恒默认字重的规则(见 `font(for:)`)
+    /// 双排下同样成立。`MenuBarStatusItem` 每次 refresh 算一次存进 `RowState`,测宽 / 排版 / 逐字边界都用那一份。
+    static func mainFont(for text: String, twoRows: Bool) -> NSFont {
+        guard twoRows else { return font(for: text) }
+        return text == placeholderGlyph
+            ? NSFont.menuBarFont(ofSize: MenuBarLyricRows.mainPointSize) : doubleRowMainFont
+    }
+
+    /// 双排下一行位图的点高 = 字面高向上取整,**不带**单行那 +2 的富余(22pt 里塞两行,富余给不起;
+    /// 两行的重叠 / 居中由 `MenuBarLyricRows.layout` 处理)。
+    static func boxHeight(for font: NSFont) -> CGFloat {
+        ceil(font.ascender - font.descender)
+    }
+
+    /// 长间奏 / 唱完等待时占位的那个音符。MenuBarStatusItem.refresh 与这里共用这一份,别各写一个字面量。
+    static let placeholderGlyph = "♪"
+
+    /// 画**这段文字**用的字体。占位符 ♪ 恒用系统默认字重(字号仍跟设置走,行高才对得上):实测 U+266A 在
+    /// medium / semibold 下会落到另一款回退字体,宽度从 6.5pt 跳到 12pt、字形也变(bold / heavy 又回到
+    /// 7.1pt)—— 一个占位记号不该随用户的粗细设置换脸,而且它一变宽在自适应模式下就是一次槽位重建。
+    static func font(for text: String) -> NSFont {
+        let lineFont = font
+        return text == placeholderGlyph ? NSFont.menuBarFont(ofSize: lineFont.pointSize) : lineFont
+    }
+
+    /// 这段文字画出来有多宽(点)。取窗宽度和滚动距离都靠它算。
+    static func width(of text: String) -> CGFloat {
+        width(of: text, font: font(for: text))
+    }
+
+    static func width(of text: String, font: NSFont) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        return (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    /// 一行文字的高度(含上下各 1pt 的富余,避免 'g'/'q' 的下伸部分被裁掉一丝)。
+    static var lineHeight: CGFloat {
+        let f = font
+        return ceil(f.ascender - f.descender) + 2
+    }
+
+    /// 逐字染色用:第 i 个词画完时的累计宽度(点)。
+    /// ⚠️ 必须按**前缀整段**测宽,不能各词单测再累加 —— 词边界处的 kerning/连字会让
+    /// "部分之和"跟整句渲染对不上,填色边界就会逐词漂移。prepare() 画的是 words 拼接后的
+    /// plainText(引擎侧保证 plainText = words.map(\.text).joined()),同一份字符串、
+    /// 同一个字体,这里量出来的前缀宽度天然落在长图的同一坐标系上。
+    /// - Parameter font: 长图实际用的字体(双排时是 `doubleRowMainFont`);nil = 单行那套 `font`。
+    static func wordEndXs(for words: [SyncedLyricWord], font: NSFont? = nil) -> [CGFloat] {
+        // 显式用整句的字体量前缀,不走 font(for:):某个前缀恰好等于占位符 ♪ 时不能换成默认字重,
+        // 否则这一个词的填色边界会跟长图对不上。
+        let lineFont = font ?? Self.font
+        var prefix = ""
+        return words.map { w in
+            prefix += w.text
+            return width(of: prefix, font: lineFont)
+        }
+    }
+
+    /// 把文字按**宽度**截断,超出部分换成省略号。装得下的句子不走这里,只有极端情况
+    /// (宽度小到连滚都没意义)才用得上。
+    ///
+    /// 按宽度而不是按字数逐字试,是因为字符宽度差得很远(同为 10 个字,中文 128pt、
+    /// 英文 65pt),按字数截出来的实际长度完全不受控。
+    static func truncate(_ text: String, toWidth limit: CGFloat) -> String {
+        guard limit > 0 else { return "" }
+        guard width(of: text) > limit else { return text }
+        let ellipsis = "…"
+        let ellipsisWidth = width(of: ellipsis)
+        // 按前缀长度二分,每个探针整段测一次宽(kerning/连字与最终显示完全一致)——原来是
+        // 逐字符累加、每次全量重测前缀,O(n²) 文本排版(2026-08-20 性能审计;此函数目前只在
+        // windowWidth<=0 的退化路径被调、上面第一行 guard 就挡掉了,这是防御性收口:将来
+        // 谁把它用在正常宽度上,一句长歌词就不再是几毫秒级主线程排版)。
+        let chars = Array(text)
+        var lo = 0                // 已知装得下的前缀长度
+        var hi = chars.count      // 已知装不下的前缀长度(全文已被上面 guard 判定装不下)
+        while lo + 1 < hi {
+            let mid = (lo + hi) / 2
+            if width(of: String(chars[0..<mid])) + ellipsisWidth > limit {
+                hi = mid
+            } else {
+                lo = mid
+            }
+        }
+        // 一个字都放不下时也要给点东西,别返回空串(菜单栏上会变成一块什么都没有的空白)。
+        return lo == 0 ? ellipsis : String(chars[0..<lo]) + ellipsis
+    }
+
+    // MARK: - 这一句到底怎么显示
+
+    /// 一行歌词在菜单栏上的两种形态。
+    ///
+    /// ⚠️ 这个判定**必须**只有一份:菜单栏本体(MenuBarStatusItem)和设置页里那条预览
+    /// (MenuBarPreviewBar)都走它。2026-08-16 之前预览是自己另写的一套(自己判断截断、
+    /// 演的是滚动的第一帧),结果预览和实际长得并不一样 —— 用户报的"预览里要真实模拟
+    /// 实际的菜单栏"就是这个。两份实现必然漂,唯一的解法是让它们共用同一个函数。
+    enum Presentation: Equatable {
+        /// 让按钮自己画这段文字 —— 这一项的宽度跟着文字走。两种来源:
+        ///  * 自适应模式下这一句装得下(正常路径);
+        ///  * 宽度被设成 0 或更小,画不出格子的退化路径(那时文字是截断过的)。
+        case text(String)
+        /// 交给图层画,这一格的宽度**恒等于**用户设的显示宽度。
+        /// pacing == nil 表示这一句装得下,静止显示、不滚。
+        case fixed(text: String, windowWidth: CGFloat, pacing: MenuBarMarquee.ScrollPacing?)
+    }
+
+    /// - Parameter dwellSeconds: 这一句会显示多久(到下一句为止)。给了就按它配速 ——
+    ///   让长句子在换句之前滚完,而不是永远按固定速度爬(见 MenuBarMarquee.pacing)。
+    ///   nil 就退回固定速度。
+    /// - Parameter leadInSeconds: 这一句**出现之后、开唱之前**那段还没染色的提前量
+    ///   (`PlaybackCoordinator.compactLeadInSeconds`)。传下去让滚动在开唱之后才起步,
+    ///   见 MenuBarMarquee.pacing 约束 4。
+    ///   ⚠️ **故意不给默认值**:三个调用方(菜单栏本体、几何推迟期的过渡渲染、设置页预览)
+    ///   都得自己交代"这一句到底开唱了没有",漏掉一个就又是"还没染色却已经在滚"。
+    /// - Parameter widthMode: 装得下的句子占多宽,见 MenuBarLyricsWidthMode。
+    ///
+    /// ⚠️ 2026-08-17 这个设置先从"最多占多宽"改成"固定占多宽"(原来装得下的句子按自己的
+    /// 宽度占位,长短句来回切时菜单栏项一直伸缩,右边其它 App 的图标跟着左右晃 —— 用户
+    /// 反馈"动来动去,观感不太好"),当天又把它改成**可选**:有人更在意"别占用不需要的
+    /// 空间",那正是被固定宽度换掉的东西。
+    ///
+    /// 两种模式的分岔**只在这一句装得下时**。装不下的路径两边完全一样:占满设定宽度、
+    /// 横向滚动 —— 那时候本来就没有"要不要缩短"可言。
+    /// - Parameter font: 主行实际用的字体(双排时是 10pt 那套,由调用方经 `mainFont(for:twoRows:)` 算好传入);
+    ///   nil = 单行那套 `font(for:)`。测宽必须跟排版同一个字体,否则"装得下"会判成"要滚"或反过来。
+    static func presentation(
+        for text: String, windowWidth: CGFloat, dwellSeconds: Double?,
+        leadInSeconds: Double, widthMode: MenuBarLyricsWidthMode, font: NSFont? = nil
+    ) -> Presentation {
+        guard windowWidth > 0 else { return .text(truncate(text, toWidth: windowWidth)) }
+        let fullWidth = width(of: text, font: font ?? Self.font(for: text))
+        // 差不到半个点就别滚了(滚也看不出来)。这一句装得下,占多宽由模式决定。
+        guard fullWidth > windowWidth + 0.5 else {
+            switch widthMode {
+            case .adaptive:
+                // 按钮自己画,这一项跟着文字缩短。不用截断 —— 已经装得下了。
+                return .text(text)
+            case .fixed:
+                return .fixed(text: text, windowWidth: windowWidth, pacing: nil)
+            }
+        }
+        // 速度按这一句的平均字宽换算,这样中文歌和英文歌"每秒滚过几个字"是一致的。
+        let averageCharWidth = fullWidth / CGFloat(max(1, text.count))
+        return .fixed(
+            text: text,
+            windowWidth: windowWidth,
+            pacing: MenuBarMarquee.pacing(
+                maxOffset: fullWidth - windowWidth,
+                averageCharWidth: averageCharWidth,
+                dwellSeconds: dwellSeconds,
+                leadInSeconds: leadInSeconds))
+    }
+
+    /// 一句歌词排好版的整条长图。**一句只画一次**,之后每一帧都是 Core Animation 在
+    /// 渲染层平移这一张图,主线程完全不参与。
+    ///
+    /// 2026-08-16 之前这里还有一个 frame(_:offset:)(从长图上按偏移裁一个窗口出来)和
+    /// 一个 image(text:width:offset:)(每帧重排整段文本)。两个都随 MenuBarExtra 一起
+    /// 删掉了:现在没有任何一方需要"某一帧长什么样"这个概念 —— 那正是逐帧驱动才需要的东西。
+    struct PreparedLine {
+        let cg: CGImage
+        /// 位图的像素/点比例。图层的 contentsScale 要用它,不能猜。
+        let scale: CGFloat
+        /// 整条长图的点宽 = 这句话画出来有多宽。
+        let textWidth: CGFloat
+        let pointHeight: CGFloat
+        let text: String
+        /// 画这张图时用的颜色。菜单打开/系统换浅深色时要拿它比对、决定要不要重画。
+        let color: NSColor
+    }
+
+    /// - Parameter color: 文字颜色。调用方负责在正确的 appearance 下解析动态颜色
+    ///   (见 MenuBarScrollingLabel.rebuildImage)。
+    /// - Parameter scale: 栅格化比例 = 图层最终所在窗口的 backingScaleFactor(调用方传
+    ///   `menuBarBitmapScale`,2026-09-05 起不在这里猜屏)。返回值的 `scale` 原样带回给图层的
+    ///   contentsScale 用。
+    /// - Parameter font: 用哪个字体画;nil = 单行那套 `font(for:)`。
+    /// - Parameter exactBox: 双排用 —— 位图高 = 字面高取整、文字底边贴 0,不留单行那上下各 1pt 的富余
+    ///   (见 `boxHeight(for:)`)。false = 单行老口径,逐像素不变。
+    static func prepare(text: String, color: NSColor, scale: CGFloat,
+                        font: NSFont? = nil, exactBox: Bool = false) -> PreparedLine? {
+        guard !text.isEmpty else { return nil }
+        let lineFont = font ?? Self.font(for: text)
+        let box = exactBox ? boxHeight(for: lineFont) : ceil(lineFont.ascender - lineFont.descender) + 2
+        let attributes: [NSAttributedString.Key: Any] = [.font: lineFont, .foregroundColor: color]
+        let textWidth = ceil((text as NSString).size(withAttributes: attributes).width)
+        // 不留尾部空白:旧版要留一个窗口宽,是因为要用 CGImage.cropping 裁窗口、越界会
+        // 拿到 nil。现在是图层平移 + 上层 masksToBounds 裁剪,平移量永远不超过
+        // textWidth - windowWidth,右边不会露出图外。
+        let pxW = Int(textWidth * scale), pxH = Int(box * scale)
+        guard pxW > 0, pxH > 0,
+              let ctx = CGContext(
+                data: nil, width: pxW, height: pxH, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        ctx.scaleBy(x: scale, y: scale)
+        let ns = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = ns
+        // flipped: false → 原点在左下、y 向上。NSString.draw(at:) 收的是文本框左下角,
+        // 所以 y 给 1 就是"底部留 1pt 内边距"(双排 exactBox 不留,贴 0)。
+        (text as NSString).draw(at: NSPoint(x: 0, y: exactBox ? 0 : 1), withAttributes: attributes)
+        NSGraphicsContext.restoreGraphicsState()
+        guard let cg = ctx.makeImage() else { return nil }
+        return PreparedLine(cg: cg, scale: scale, textWidth: textWidth,
+                            pointHeight: box, text: text, color: color)
+    }
+}
+
+extension NSView {
+    /// 自绘位图该按哪个比例栅格化(2026-09-05):**这个视图所在窗口**的 backingScaleFactor。
+    ///
+    /// 此前三处各取各的:长图和进度图标拿 `NSScreen.main`(有键盘焦点的窗口所在屏),活体图标
+    /// 写死 2。状态栏按钮真正被画在哪块屏它们都不知道 —— 混接不同 DPI 的显示器时,在外接 1x 屏
+    /// 上干活(key 窗口在那边)、MacBook 自己菜单栏上的歌词就是 1x 位图拉到 2x,发虚;反过来
+    /// 2x 位图落到 1x 屏只是白费一倍像素。单屏 Retina 下两种取法结果一样,看不出差别。
+    ///
+    /// 还没挂进窗口时退到主屏(菜单栏默认在的那块,不是"有焦点的那块"),再退到 2。位图与图层
+    /// contentsScale 必须用同一个值;比例变化(状态项在显示器之间迁移、首次挂进窗口)由
+    /// viewDidChangeBackingProperties / viewDidMoveToWindow 接住只换 contents 重排,不碰动画
+    /// (MenuBarScrollingLabel / MenuBarLiveIconView)。contracts 组「菜单栏自绘位图的栅格化比例」
+    /// 守着 MenuBar 目录下不再出现 NSScreen.main 猜屏和写死的 contentsScale。
+    var menuBarBitmapScale: CGFloat {
+        window?.backingScaleFactor ?? NSScreen.screens.first?.backingScaleFactor ?? 2
+    }
+}

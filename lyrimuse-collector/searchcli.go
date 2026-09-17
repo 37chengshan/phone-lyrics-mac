@@ -1,0 +1,517 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+)
+
+// runSearchLyricsCLI implements `collector search-lyrics -artist ... -title ...
+// -album ... -duration ...`: a one-shot, no-persistent-server way for desktop-lyrics
+// to let the user manually re-search lyric candidates for a specific song (its
+// "歌词管理" window's "联网搜索候选歌词" feature). It reuses scoredLyricCandidatesStreaming
+// (enrich.go) — the exact same NetEase/QQ/酷狗/Musixmatch/LRCLIB fetch-and-score logic the
+// normal background auto-resolve path uses — so there is no second, drifting
+// implementation of "how do we rank lyric sources" living in Swift.
+//
+// Prints one JSON object line (NDJSON, via repeated json.Encoder.Encode calls on the
+// same stdout — each call already appends its own newline) per update instead of a
+// single array at the end: the first line lands as soon as the first source answers,
+// each later line is the full best-known-so-far ranked list including whichever
+// sources have answered by then (see fetchScoredLyricCandidatesStreaming's onUpdate
+// comment for why it's the whole list every time, not just the newly-arrived source),
+// and the last line printed is the final result. Each line is a searchLyricsUpdate —
+// not a bare candidates array (2026-08-02 changed from bare array to this wrapper) —
+// so the networkLooksDown signal can ride along with the candidates without a second,
+// out-of-band channel. LyricsSearchService.swift reads stdout line by line as the
+// process runs (not just at exit) and replaces its displayed list with each line's
+// contents — that's the "陆陆续续出来" behavior instead of waiting for everything (or
+// the 20s deadline) before showing anything. Never touches enrich-cache.json (that only
+// happens if/when desktop-lyrics's existing EnrichCacheStore.saveEdit persists whichever
+// candidate the user picks).
+func runSearchLyricsCLI(args []string) {
+	fs := flag.NewFlagSet("search-lyrics", flag.ExitOnError)
+	artist := fs.String("artist", "", "track artist")
+	title := fs.String("title", "", "track title")
+	album := fs.String("album", "", "track album")
+	duration := fs.Float64("duration", 0, "track duration in seconds (for duration-match scoring)")
+	// -pick:除了候选列表,再按**自动解析那一套规则**(pickLyricCandidate)选出冠军,附在最后
+	// 那行 stdout 的 pick 字段里。给「歌词管理」的「重新自动匹配」按钮用 —— 冠军必须由 Go
+	// 这边算:pickLyricCandidate 带一个设置分支(顺序优先模式取的是"配置顺序里第一个
+	// Score>=0",不是最高分),在 Swift 侧自己取 max(score) 会跟自动决策给出不同答案,于是
+	// 手动匹配的结果会被下一轮自愈路径换掉 —— 自己跟自己打架。
+	pick := fs.Bool("pick", false, "also decide a winner with the automatic resolve rules (pickLyricCandidate)")
+	// -current-source:这首歌眼下生效的歌词源。只给 -pick 用,复刻 rescoreDecidable 那道闸:
+	// 当前源这一轮没应答时不敢下结论(它可能本来就是最优的,只是这次超时了),避免一次偶发的
+	// 部分应答把用户降级到更差的一份。
+	currentSource := fs.String("current-source", "", "the lyric source in effect now (for the -pick decidability guard)")
+	// -player:**这一刻在放的播放器** bundle id(com.apple.Music / com.tencent.QQMusicMac …)。
+	// 只喂给同源加权那一项,见下面 setNativeLyricSourcesForPlayer 那处注释。缺省=不加分。
+	player := fs.String("player", "", "bundle id of the player currently playing (for the same-source scoring term)")
+	if err := fs.Parse(args); err != nil {
+		log.Fatalf("search-lyrics: %v", err)
+	}
+	if *title == "" {
+		fmt.Fprintln(os.Stderr, "search-lyrics: -title is required")
+		os.Exit(2)
+	}
+
+	// main() 的正常启动流程会在这之后才 loadFeatureFlags(...),但这条 CLI 子命令走的是
+	// os.Args[1]=="search-lyrics" 的提前分支、马上 return,永远不会执行到那一行——
+	// features 这个包级变量在这里还是零值(LyricsSources 是 nil map)。手动搜索要遵循
+	// "歌词"设置里的"歌词来源"开关,所以这里必须按跟 main() 完全一致的默认路径规则自己
+	// 加载一遍,不然下面过滤时 nil map 对任何 key 取值都是 false,会把全部源误判成
+	// "没启用"、直接返回空列表。
+	if configDir() != "" {
+		cfgPath := filepath.Join(configDir(), "config.json")
+		features = loadFeatureFlags(filepath.Join(filepath.Dir(cfgPath), clientName+"-features.json"))
+		// 同理,MusicBrainz 的歌手别名缓存也得自己加载一遍。2026-08-15 起
+		// retryArtistIdentities 会在没查到可用候选时拿 canonical 名再搜一次,而
+		// artistAliasPath 为空的话这份缓存既不读也不写 —— 每开一次"搜索候选歌词"
+		// 弹窗都要重新打一次 MusicBrainz(它自己还有节流,直接体现为用户多等)。
+		loadArtistAliasCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-artist-alias-cache.json"))
+		// 同理,MB 主名那份也要读 —— 这条 CLI 每次都是新进程,不读的话每开一次弹窗都要
+		// 重打一次 MusicBrainz,撞上限速(1 req/s 按 IP,而节流是进程内的)就等于这轮
+		// 别名兜底整个失效:表现是"同一首歌第一遍搜 0 条、再搜一遍就有"。
+		loadMBPrimaryNameCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-artist-primary-cache.json"))
+		// Apple 目录锚点那份也读:手动搜索走的是独立进程,不读的话
+		// appleCatalogSearchIdentities 恒为空,「联网搜索候选歌词」拿不到常驻实例已经
+		// 攒下的权威署名,名次又会跟自动决策对不上(跟 nativeLyricSource 那个坑同型)。
+		loadAppleCatalogCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-apple-catalog-cache.json"))
+		// 同理,Apple 各商店曲目署名那份也要读——道理跟上面 MB 主名那段一样,这条 CLI
+		// 每次都是新进程,不读的话每次开弹窗都要重新打几次 iTunes Search。
+		loadAppleStorefrontArtistCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-apple-storefront-artist-cache.json"))
+		// ⚠️ 同一次商店遍历的第二个产物(这一条录音在原产地商店的曲名)**单独一份**、也必须在这里
+		// 读 —— 这条 CLI 在 main() 里 flag.Parse() **之前**就分支走掉了(见 main.go 那个
+		// os.Args[1] == "search-lyrics" 分支),常驻那边的加载点它一行都够不到。漏了不会报错,
+		// 只会让每次开弹窗都重打两次 iTunes(2026-09-12 就这么漏过一次,靠"缓存文件压根没生成"
+		// 才发现)。见 appleStorefrontCanonicalTitle。
+		loadAppleStorefrontTitleCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-apple-storefront-title-cache.json"))
+		// 同理,QQ 音乐歌手搜索建议那份缓存也要读——retryArtistIdentities/
+		// resolveGenericArtistCanonicalName 都会用到,不读的话每次开弹窗都要重新打一次
+		// QQ smartbox。
+		loadQQArtistNameCache(filepath.Join(filepath.Dir(cfgPath), clientName+"-qq-artist-name-cache.json"))
+		// 同理,enrich 缓存本身也要读(2026-09-09):retryArtistIdentities 新增的
+		// learnedSourceArtistAlias 那一档,证据就在这份缓存里(同一歌手别的歌成功解析时
+		// 源那边署的名)。不读的话它在手动搜索里恒为空 —— 而"播放器把歌手名本地化了"
+		// (王子=Prince)恰恰是用户最会跑来手动搜一把的场景,这一档在那时缺席等于白加;
+		// 顺带也会重蹈上面 Apple 目录锚点/同源加权那两段警告的覆辙:弹窗的名次跟自动
+		// 决策对不上。⚠️ 这条 CLI **只读不写**这份缓存(整条搜索链路不碰 commitEnrichEntry),
+		// 不会跟常驻 collector 抢写同一个文件。
+		loadEnrichCacheReadOnly(filepath.Join(filepath.Dir(cfgPath), clientName+"-enrich-cache.json"))
+		// ⚠️ 2026-08-21 补:main() 在 loadFeatureFlags 之后紧跟着有这一行,而这条 CLI 子命令
+		// 在那之前就 return 了 —— 于是 match.go 里那个包级 nativeLyricSources 一直是空集,
+		// "与当前播放器同源 +250"(match.go 的 sameSourceAsPlayer 档)在手动搜索里**恒为 0**。
+		// 后果不是"少一点分"而是排序口径不同:冠亚军分差中位只有 22 分、74% 的歌 ≤40 分,
+		// 250 分足以翻盘(qq 与 kugou 的分差常年只有 9 分)。所以在此之前,「联网搜索候选歌词」
+		// 展示的名次跟 collector 自动决策的名次对不上,用 QQ/网易云/酷狗 听歌的用户尤其明显。
+		// -pick 要拿这套规则选冠军,这个差异必须先补掉。
+		// 同源加权的判据:按调用方(Swift 侧「歌词管理」/「解析决策」)传进来的**当前
+		// 播放器 bundle id** 设。⚠️ 不能像 2026-09-02 之前那样按 features.Players 设 ——
+		// 那是"用户勾了哪些播放器",不是"现在在放哪个",全勾的用户会让三个源同时拿到
+		// +250(见 match.go 里 nativeLyricSources 的注释)。
+		//
+		// -player 缺省(老版本 App、或调用方拿不到当前播放器)时是空串,`playerForBundleID`
+		// 认不出、集合为空 —— 这一项不加分。宁可少加一项也不要加错:2026-08-21 补
+		// nativeLyricSources 那次要修的是"手动搜索的名次跟自动决策对不上",而**加错**同样
+		// 会造成对不上,还多一层"错得理直气壮"。
+		setNativeLyricSourcesForPlayer(*player)
+	}
+
+	// 跟 enrich.go 的 resolveTrackEnrichment 同一个理由:NetEase/QQ/酷狗/LRCLIB 的
+	// 搜索索引是简体中文,本地 Apple Music 标签若是繁体(比如"周杰倫"),繁体原文直接
+	// 发起搜索请求会查不到任何候选——这个 CLI 子命令是 desktop-lyrics"联网搜索候选
+	// 歌词"功能唯一的数据来源,不经过 resolveTrackEnrichment,必须单独转换一遍,不能
+	// 指望那边的修复覆盖到这里。
+	sArtist, sTitle, sAlbum := toSimplified(*artist), toSimplified(*title), toSimplified(*album)
+	// 2026-08-30 真实bug(方大同《Lovers Policy》案):这条 CLI 拿到的 -duration 来自
+	// 调用方(Swift 侧「歌词管理」列表的 Summary.durationSecs),而那个值只在**这首歌
+	// 已经成功解析过一次**时才有——一首从来没成功过的歌(比如这首,「关键字」反查轮几次
+	// bug 修复之前一直卡在 0 候选)缓存里压根没有 duration_secs/resolved_duration_secs
+	// 字段,传进来的就是 0。而时长偏偏是 scoreLyricCandidateDetailed 打分、以及标题反查轮
+	// (retryTitleFromAlbumDetailed/retryTitleFromArtistSearchDetailed,两者开头都是
+	// `durationSecs <= 0` 直接返回 false)**唯二**用来判定"网易云专辑里这条曲目是不是
+	// 我们要找的这首"的硬信号——duration=0 会让这一整套机制全体失效,不是"差一点找不到"
+	// 而是"这条路直接被堵死",症状是弹窗每次都显示"七个源都没找到可用的候选"、无论重试
+	// 多少次都一样(这正是本例的真实症状,反复排查了好几轮才在这里发现根子)。
+	//
+	// 修法:duration 缺失时,问一次 Apple 目录要一个真实时长兜底——resolveAppleMusicMatch
+	// 本来就会因为「App 联动跳转链接」「搜索候选歌词弹窗的通用封面」这两个目的对几乎每首
+	// 歌都查一遍(CN+US 两个商店,按专辑名精确定位那条兜底本就在查曲目表、天然带着
+	// trackTimeMillis),这里只是多读一个之前没读的字段,不多发请求。
+	effectiveDuration := *duration
+	if effectiveDuration <= 0 {
+		if m := appleMusicMatchCached(context.Background(), sArtist, sTitle, sAlbum); m.durationSecs > 0 {
+			log.Printf("search-lyrics: duration missing from caller, recovered %.3fs from Apple catalog", m.durationSecs)
+			effectiveDuration = m.durationSecs
+		}
+	}
+	enc := json.NewEncoder(os.Stdout)
+	var appleTitle, appleAlbum string
+	// 只在最后那行带上(赋值发生在收尾的 emit 之前),流式的中间行不带 —— 冠军要等所有源
+	// 都到齐才有意义。
+	var finalPick *searchLyricsPick
+	// 轮次推导状态,语义见 searchLyricsUpdate.Round 的注释。emit 的调用是串行的
+	// (fetchScoredLyricCandidatesStreaming 里是单个收集 goroutine 在发,兜底轮之间
+	// 也是顺序执行),这两个变量不需要锁。
+	round, lastDone := 1, 0
+	emit := func(_ neteaseInfo, results []scoredLyricCandidateResult, done, total int) {
+		if done < lastDone {
+			round++
+		}
+		lastDone = done
+		// networkLooksDown() 2026-08-02 补上——之前每行 stdout 只是候选数组本身,五个源
+		// 都没查到时 desktop-lyrics 只能显示一句笼统的"都没找到",分不清是这首歌真的没有
+		// 网络歌词,还是网络整体不通导致五个源的请求全部发不出去。见 networkobs.go 的
+		// 注释,这里额外带上这个信号,让前端能区分这两种情况、给出不同的提示文案。
+		update := searchLyricsUpdate{
+			Candidates:               filterEnabledLyricSources(results),
+			NetworkLooksDown:         networkLooksDown(),
+			SourcesDone:              done,
+			SourcesTotal:             total,
+			Round:                    round,
+			AppleTitle:               appleTitle,
+			AppleAlbum:               appleAlbum,
+			SourceFailureReasonCodes: lyricSourceFailureReasons(results),
+			Pick:                     finalPick,
+		}
+		for _, r := range results {
+			if r.Instrumental {
+				update.Instrumental = true
+				update.LegacyLrclibInstrumental = true // 过渡期,见字段注释
+			}
+		}
+		if err := enc.Encode(update); err != nil {
+			log.Fatalf("search-lyrics: encode results: %v", err)
+		}
+	}
+	// 歌手别名解析**预热**(2026-09-02):跟第一轮搜索并发跑,把 MusicBrainz 那趟网络往返
+	// 藏进第一轮那 20 秒总截止里。
+	//
+	// 为什么只在这条 CLI 上做:常驻端走 resolveTrackEnrichment,那边 `e.CanonicalArtist =
+	// canonicalArtistViaMusicBrainz(...)` 早就把这份缓存捂热了;而这条子命令是**每点一次
+	// 「搜索候选歌词」就新起一个进程**,进程内缓存永远从空开始 —— 于是每点一次都要在
+	// 第一轮跑完之后再串行等一趟 MusicBrainz。
+	//
+	// 实测(DAOKO×米津玄師《打上花火》,逐条打时间戳):第一轮 20.03s 撞满总截止 → 26.03s
+	// 才等到 `musicbrainz.org/ws/2/artist/ FAILED after 6001ms: context deadline exceeded`,
+	// 整整 6 秒纯串行等待。而 MusicBrainz 这阵子本来就慢:同一时刻直连探测三次是
+	// 5.60s / 2.99s / 11.51s(超时),6 秒的客户端上限经常撞满,不是偶发。
+	//
+	// ⚠️ **不多打一次请求**:`retryArtistIdentities` 本来就会在别名轮被调用(enrich.go 里
+	// `dedupeArtistIdentities(...)` 那一行),这里只是把同一次调用提前到第一轮开始时发起,
+	// 结果落进那几份带锁的进程内缓存(artistAliasCache / mbPrimaryNameCache /
+	// qqArtistNameCache),别名轮再调时直接命中。查到非空还会落盘,下次点搜索也省了。
+	//
+	// ⚠️ 用 fire-and-forget 而不是等它:预热**失败或没跑完都不该拖慢搜索**。理论上它和
+	// 别名轮那次调用可能撞上、各发一次 MusicBrainz(缓存检查不带 in-flight 去重),但预热
+	// 早了整整一轮(≥20s)、而 MB 客户端上限只有 6s,实际撞不上;真撞上了也只是被
+	// musicbrainzThrottle 串成两次、相隔 1.1s,不会放大成请求风暴。
+	go retryArtistIdentities(context.Background(), sArtist)
+
+	// 一次性 CLI 命令,没有可以取消它的交互界面,context.Background() 就够。
+	// 手动搜索这条路径也记查询词(借鉴清单 V1):「重新自动匹配」采纳后写进缓存的决策存档
+	// 就是下面这一份,不挂收集器的话它会是唯一一条没有 queries_tried 的路径。
+	// 这个一次性进程没有熔断态(见 sourcebreaker.go 头注),所以只挂 query log、不挂 round。
+	searchCtx, queries := withLyricQueryLog(context.Background())
+	_, results := scoredLyricCandidatesStreaming(searchCtx, sArtist, sTitle, sAlbum, effectiveDuration, emit)
+	// 苹果侧元数据:搜索里的 applecover goroutine 用同一组关键词查过、通常已写热
+	// appleURLCache(同 key)。这里**只读缓存**——查无此歌时它不写缓存,真去查会在
+	// "这轮搜索结束了"那行之前同步重跑一整轮 CN+US 搜索,把收尾挂住几秒(2026-08-12 审阅);
+	// 这两个字段是给下一轮评测攒的数据,缺一次无妨,不值得让用户等。
+	appleMatch := appleMusicMatchCachedOnly(sArtist, sTitle, sAlbum)
+	appleTitle, appleAlbum = appleMatch.title, appleMatch.album
+	// 只在 -pick 时才去读缓存文件:另一颗按钮(纯搜索候选)用不到这个事实。
+	noCurrentLyrics := false
+	if *pick && configDir() != "" {
+		cachePath := filepath.Join(configDir(), clientName+"-enrich-cache.json")
+		if empty, known := lyricsEmptyInCacheFile(cachePath, *artist, *title, *album); known {
+			noCurrentLyrics = empty
+		}
+	}
+	if *pick {
+		// 跟 rescoreLyrics(enrich.go)逐行对齐:同一个 pickLyricCandidate、同一个
+		// rescoreDecidable、同一份 seen/responded、同一个 buildLyricsDecision。调用方按
+		// 这些字段写缓存,写出来的形状就跟自动 rescore 写的一模一样(那条路径是这个仓库
+		// 里唯一经受过考验的"重新选一次歌词"实现)。
+		picked := pickLyricCandidate(results)
+		p := &searchLyricsPick{
+			ScoringVersion: lyricsScoringVersion,
+			// ⚠️ 这里**必须去缓存里读真相**,不能用 `*currentSource == ""` 推断
+			// "这条没有歌词"。2026-08-22 对抗性复核抓到的反例:
+			// EnrichCacheStore.saveEdit 的 source 参数默认 nil,而「歌词管理」里那颗
+			// 「保存修改」正是 `saveEdit(key:lyrics:tr:roma:)`(不传 source)——它会
+			// `removeValue(forKey: "lyrics_source")`,导出的 .lrc 也不带 [source:],
+			// 于是**每一条用户手改过的条目**都是「有歌词 + lyrics_source 为空」,
+			// summary.lyricsSource 传过来就是空串。照推断走的话,这道闸会对手改条目
+			// 一律放行,让冠军覆盖掉人工修正过的正文(那份内容删了找不回来)。
+			//
+			// 当初那个"294 条里 0 例外"的测量取样取错了:现役缓存里手改条目是 0 条 ——
+			// 因为老库那 33 条手改记录同一天早些时候刚被移走。在一个恰好没有反例的
+			// 数据集上做的测量,证明不了不变量。
+			//
+			// 读不出来(known=false)时按最保守的那一支走,行为等同改动之前。
+			Decidable:            rescoreDecidable(results, *currentSource, noCurrentLyrics),
+			SourcesSeen:          lyricSourcesWithCandidates(results),
+			SourcesResponded:     lyricSourcesResponded(results),
+			ResolvedDurationSecs: effectiveDuration,
+			Mode:                 features.LyricsSourceMode,
+		}
+		if picked != nil {
+			p.Winner = picked.Source
+			p.WinnerScore = picked.Score
+		}
+		// 决策存档:只在"可判"时写,理由跟 rescoreLyrics 里那段一样 —— 当前源没应答的那一轮
+		// 没有做出任何决定,拿它盖掉上一份完整评估的证据是纯损失。
+		//
+		// ⚠️ Applied 这里给的是**近似值**:CLI 看不到缓存里的正文,只能按"冠军是否换了源"判,
+		// 于是"同源但换了内容"会被算成 false。调用方(EnrichCacheStore 那条采纳路径)知道真相,
+		// **必须覆写它** —— 不覆写的话「解析决策」弹窗会把 false 渲染成「评估后维持原状」,
+		// 跟结果行说的"已换成一份"直接打架(2026-08-21 用户实测撞到过)。
+		if p.Decidable {
+			d := buildLyricsDecision(lyricsDecisionPathManualRematch, sArtist, sTitle, sAlbum, effectiveDuration,
+				results, picked, picked != nil && picked.Source != *currentSource)
+			d.QueriesTried = queries.queries()
+			if raw, err := json.Marshal(d); err == nil {
+				p.DecisionJSON = string(raw)
+			}
+		}
+		finalPick = p
+	}
+	// 保底再打印一次最终结果——通常这跟 emit 在最后一个源到达时已经打过的那一行内容
+	// 完全一样(纯防御性的重复),唯一真正需要它的场景是:20 秒兜底超时在第一个源都还
+	// 没回来时就已经触发(全部源异常缓慢),这种极端情况下循环里的 emit 一次都没
+	// 被调用过,不能让 Swift 那边一行 stdout 都收不到、误判成"进程没有任何输出"。
+	// 这一行代表"这轮搜索结束了",所以进度直接报满 —— 即便是 20 秒兜底超时提前收场,
+	// 也不该让弹窗停在 3/5 让人以为还在查(真正"还在查"由进程是否退出决定,见 Swift 侧)。
+	emit(neteaseInfo{}, results, enabledLyricSourceCount(), enabledLyricSourceCount())
+}
+
+// searchLyricsUpdate 是 search-lyrics 每行 stdout 输出的实际结构——2026-08-02 从裸
+// candidates 数组改成这个包一层的对象,好让 networkLooksDown 这个信号跟候选列表一起
+// 传给 Swift 那边,不用另开一条带外的信息通道。字段名用大写导出是 encoding/json
+// 序列化的要求,LyricsSearchService.swift 那边按同样的字段名(小写开头,Swift 惯例)
+// 解码。
+type searchLyricsUpdate struct {
+	Candidates       []scoredLyricCandidateResult `json:"candidates"`
+	NetworkLooksDown bool                         `json:"networkLooksDown"`
+	// 歌词源的完成进度,给弹窗显示 (X/Y)——语义见 lyricSearchUpdateFunc 的注释。
+	SourcesDone  int `json:"sourcesDone"`
+	SourcesTotal int `json:"sourcesTotal"`
+	// Round:第几轮全源检索,从 1 开始(2026-09-02,用户报"到 8/8 了又重新从 1 开始,
+	// 看起来不友好")。scoredLyricCandidatesStreaming 的兜底轮(首歌手变体/别名/标题
+	// 反查,见 enrich.go)每轮都是一次完整的全源扫荡,SourcesDone 每轮从 0 重新数——
+	// 这不是 bug 是设计(每轮真的把全部源都重新问了一遍),但弹窗上只见数字回跳、
+	// 不见轮次,读起来像出了错。轮次在 emit 那里从"done 比上一行小"推导(单轮内 done
+	// 单调不减,回跳只可能是新一轮开始),不用把轮次序号穿透进 enrich.go 的每层闭包。
+	Round int `json:"round"`
+	// 2026-08-12 起的透传字段,给下一轮打分维度评测攒数据(Swift 端不认识就忽略,无影响):
+	// AppleTitle/AppleAlbum:iTunes(第六方,不与五歌词源共享曲库)匹配到的歌名/专辑名,
+	// 只在最终那行输出上带(拿的是搜索过程中 applecover goroutine 已写热的同 key 缓存,
+	// 不多打网络);Instrumental:有源明确说这首歌是纯音乐(独立字段,不再只靠
+	// Score:-1 哨兵行传递,消费端能与普通 reject 可靠区分)。
+	AppleTitle string `json:"appleTitle,omitempty"`
+	AppleAlbum string `json:"appleAlbum,omitempty"`
+	// SourceFailureReasonCodes:哪些没给出候选的源,查得到失败原因——两层:具体原因只覆盖
+	// neteaseLastFailureReasonNow/musixmatchLastFailureReasonNow/ytmusicLastFailureReasonNow
+	// 这三个已经接了诊断旁路的源(2026-08-31,给 test-lyric-sources 用的同一套旁路,见
+	// testlyricsourcescli.go 的排查记录);传输层通用原因(2026-09-06,dns_failed /
+	// connect_failed / server_error)对任何一个 HTTP 响应都没拿到的源都会报。两层都没命中的
+	// 源不在这个 map 里出现——Swift 侧对没出现的源如实显示"未给出候选"，不编一个没核实过的理由。
+	// key 是源名(跟 candidates 里的 source 同一套),value 是**稳定代码**,不是文案
+	// (2026-09-01 从 SourceFailureReasons 改名——见 lyricsourcefailure.go 头注,人话交给
+	// Swift 侧的 LyricSourceFailureReason.text(forCode:) 按 App 界面语言翻译)。
+	SourceFailureReasonCodes map[string]string `json:"sourceFailureReasonCodes,omitempty"`
+	// Instrumental:有源明确断言"这首本来就没有词"。2026-08-22 从 lrclibInstrumental 改名 ——
+	// 这个信号的来源早就不只 lrclib 了:2026-08-20 加了网易云的 pureMusic/占位正文,
+	// 2026-08-22 又加了 QQ 的占位断言(见第 09 章「纯音乐标记的三个来源」),字段名一直没跟上。
+	Instrumental bool `json:"instrumental,omitempty"`
+	// LegacyLrclibInstrumental 是**过渡期**的同值别名,只为兜住一件事:collector 和 App 是
+	// 两个独立部署的二进制(lyrimuse-collector/build.sh 只换 collector、不重建 App),所以
+	// 换了 collector 之后跑的可能还是旧 App —— 旧 App 只认 lrclibInstrumental 这个 key,
+	// 单方面改名会让「有源明确说这首是纯音乐」这类文案在重建 App 之前静默退化成
+	// 「这一轮没有一个能用的候选」。
+	//
+	// ⚠️ **删除条件**:App 侧带着「优先读 instrumental、缺失才退回 lrclibInstrumental」那段
+	// 解码(LyricsSearchService.RawSearchUpdate)重新构建并安装之后,这个字段就可以删掉。
+	// 它是唯一的存在理由,别让它长住。
+	LegacyLrclibInstrumental bool `json:"lrclibInstrumental,omitempty"`
+	// 只有 -pick 且只有最后那行才有(见 searchLyricsPick)。
+	Pick *searchLyricsPick `json:"pick,omitempty"`
+}
+
+// searchLyricsPick 是 -pick 模式下"按自动解析规则重选一次"的结论,给「歌词管理」的
+// 「重新自动匹配」按钮用。字段是照 rescoreLyrics 实际写进 enrichEntry 的那一套挑的,
+// 调用方(EnrichCacheStore.rematchAdopt)按它写缓存,写出来的形状跟自动 rescore 一致。
+//
+// 为什么冠军非要 Go 这边算:pickLyricCandidate 有设置分支 —— 顺序优先模式取的是"用户
+// 配置顺序里第一个 Score>=0 的源",不是最高分;而且它还要过 features.LyricsSources 的
+// 启用过滤、跳掉 Score<0 的废候选(全源全废时自动路径一个字都不写)。这三条在 Swift 侧
+// 复制一遍就是第二份会漂的决策规则,而漂的表现是"手动匹配完,下一拍自愈路径又给换了"。
+type searchLyricsPick struct {
+	// 冠军的源;空串 = 一个能用的候选都没有(全被判废/全没搜到),调用方**不许**退回
+	// "取第一条",那会把一份明确不可用的歌词写进去。
+	Winner      string `json:"winner,omitempty"`
+	WinnerScore int    `json:"winnerScore"`
+	// 写进 lyrics_scoring_version:不写这个,下次播放时 needsLyricsRescore 会立刻再跑一遍
+	// (首次判定不受 1 小时节流约束)。必须跟 lyrics_score 成对写 —— 只写版本不写分数,
+	// retry 的比较基准会变成 0,"严格更高才替换"那道闸等于被拆掉。
+	ScoringVersion int `json:"scoringVersion"`
+	// 复刻 rescoreDecidable:当前源这一轮没应答时为 false,调用方应当**什么都不改**并如实
+	// 告诉用户"这轮 X 源没应答,没有换"。
+	Decidable            bool     `json:"decidable"`
+	SourcesSeen          []string `json:"sourcesSeen,omitempty"`
+	SourcesResponded     []string `json:"sourcesResponded,omitempty"`
+	ResolvedDurationSecs float64  `json:"resolvedDurationSecs,omitempty"`
+	// smart / priority —— 结果文案如实说明这轮按哪套规则选的(设置页那个「匹配算法」)。
+	Mode string `json:"mode,omitempty"`
+	// lyricsDecision 的 JSON 原文。传字符串而不是嵌套对象:调用方要把它原样塞进
+	// enrich-cache.json 的 lyrics_decision 字段,走字符串就不需要在 Swift 侧再镜像一遍
+	// 这个结构(镜像就会漂),解析成 [String: Any] 直接写回即可。
+	DecisionJSON string `json:"decisionJSON,omitempty"`
+}
+
+// filterEnabledLyricSources drops candidates from sources the user disabled via
+// the "歌词"设置's "歌词来源" toggles (features.LyricsSources) — mirrors
+// pickLyricCandidate's filtering for the automatic resolve path, so manual search
+// and automatic resolve now agree on which sources are in play. Falls back to
+// returning everything unfiltered only if features.LyricsSources somehow ended up
+// empty (should not happen in practice — loadFeatureFlags always resolves it to
+// all-four-enabled when unset, see resolveLyricsSources — this is just a safety
+// net against showing zero candidates instead of trusting a genuinely-empty map).
+//
+// 顺带把 Instrumental 标记条目也过滤掉(2026-08-03 补上)——那不是一条真的候选歌词,
+// 是"lrclib 说这首歌是纯音乐"这个信号借 scored 列表搭车传出来的(见
+// scoredLyricCandidateResult.Instrumental 定义处的注释),"歌词管理"的手动搜索弹窗
+// 只该看到真正可以点选采用的候选,不该多出一行歌词是空的、点了也没用的候选。
+func filterEnabledLyricSources(results []scoredLyricCandidateResult) []scoredLyricCandidateResult {
+	filtered := make([]scoredLyricCandidateResult, 0, len(results))
+	for _, r := range results {
+		if r.Instrumental {
+			continue
+		}
+		if !lyricSourceEnabled(r.Source) {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	return filtered
+}
+
+// lyricSourceFailureReasons 给"搜索候选歌词"弹窗的"歌词源可用情况"明细用(2026-08-31,
+// 用户反馈"能不能说明未给出候选的源具体是为什么")——对每一个**这一轮没给出候选**的源,
+// 查一下有没有已知的具体失败原因,查得到才放进返回的 map。返回值的 value 是**稳定
+// 代码**,不是文案,见 lyricsourcefailure.go 头注。
+//
+// 两层:① 具体失败原因,只覆盖三个已经接了诊断旁路的源:netease/musixmatch/lyricfind(见各自
+// xxxLastFailureReasonNow 的头注,2026-08-31 起给 test-lyric-sources 用的同一条只读旁路,这里
+// 复用,不重新发明);② 传输层通用原因(2026-09-06),对任何源:这一轮一个 HTTP 响应都没拿到的,
+// 报 dns_failed / connect_failed / server_error(sourcebreaker.go 的 transportFailureCodes)。
+// 两层都没命中的源(比如拿到了 200 / 404 但没这首歌)不在返回的 map 里 —— 那就是真的"未给出
+// 候选",Swift 侧照实显示,不编一个没核实过的理由。
+//
+// ⚠️ **原因 ≠ 没给出候选的原因**(2026-09-03 补的一道判据):网易云那一条现在还要过
+// `neteaseSawSuccessNow()` —— 这一轮它只要成功答过一次,就不把限流报上去。实测对照见
+// netease.go 里那个函数的头注(同一分钟两次搜索:两次都吃了 405,其中一次照样给出 4 条
+// 候选)。musixmatch/lyricfind 暂时没有等价的"成功过"信号,维持原样。
+//
+// ⚠️ 这几个 xxxLastFailureReasonNow 读的是**进程级**"这次进程生命周期里最近一次识别出的
+// 失败原因",不是专门为"这一轮搜索"重新打点的——但 search-lyrics 本来就是一次性短命进程
+// (每次手动搜索都是全新进程),这次搜索期间对该源发起的请求要是真的撞上了已识别的失败
+// 模式,原因会在这次进程里被设置一次,读到的就是这次搜索本身的真实原因,不是别的进程/
+// 别的时间点残留下来的陈旧值。
+func lyricSourceFailureReasons(results []scoredLyricCandidateResult) map[string]string {
+	return lyricSourceFailureReasonsWith(results, lyricSourceBreakerShared.transportFailureCodes(),
+		lyricSourceEnabled, amllSkippedForMissingIDsNow())
+}
+
+// lyricSourceFailureReasonsWith 是上面那个的可测版本:传输层代码表、启用判定、amll 缺 ID 标记
+// 都从参数进,不碰包级状态(三个源特有的 xxxLastFailureReasonNow 仍读进程级旁路 —— 那几条
+// 各自有测试,这里只管合成规则)。
+func lyricSourceFailureReasonsWith(results []scoredLyricCandidateResult, transport map[string]string,
+	enabled func(string) bool, amllSkippedForMissingIDs bool) map[string]string {
+	responded := lyricSourcesResponded(results)
+	reasons := make(map[string]string)
+	check := func(source string, reasonFn func() string) {
+		if containsString(responded, source) {
+			return
+		}
+		if r := reasonFn(); r != "" {
+			reasons[source] = r
+		}
+	}
+	// ⚠️ 2026-09-03:网易云这一轮只要**成功答过一次**,就不把限流报成"没给出候选"的原因。
+	// 病根是张冠李戴 —— `neteaseLastFailureReason` 只要进程里出现过一次 code 405 就被贴上,
+	// 而这个 map 只看"有没有给出候选",两件独立的事被显示成因果。对照实验和完整推导见
+	// netease.go 里 `neteaseSawSuccessNow` 的头注。
+	if !neteaseSawSuccessNow() {
+		check("netease", neteaseLastFailureReasonNow)
+	}
+	check("musixmatch", musixmatchLastFailureReasonNow)
+	check("lyricfind", ytmusicLastFailureReasonNow)
+	// deezer(2026-09-13):目前只有"换不到匿名 JWT"这一种已实测的失败模式
+	// (见 lyricsourcefailure.go 的 deezer_auth_failed)。
+	check("deezer", deezerLastFailureReasonNow)
+	// 传输层兜底(2026-09-06,来龙去脉见 sourcebreaker.go 最后一节「传输层失败分类」):这一轮一个
+	// HTTP 响应都没拿到的源,报 dns_failed / connect_failed / server_error。放在具体代码之后、
+	// 只填空 —— 限流 / 地区限制 / 直连被堵比"连不上"更有信息量。只报启用的源:关掉的源这一轮
+	// 不发请求(2026-09-06 起 fetchScoredLyricCandidatesStreaming 直接跳过它们,见 enrich.go
+	// lyricSourceSkipFor),表里即便有它的记录也是别的时候留下的,跟这一轮无关。
+	for source, code := range transport {
+		if containsString(responded, source) || !enabled(source) {
+			continue
+		}
+		if _, has := reasons[source]; has {
+			continue
+		}
+		reasons[source] = code
+	}
+	// amll 的派生归因(见 lyricsourcefailure.go 的 upstream_unreachable):它没有搜索接口,只按
+	// 网易云 / QQ 的曲目 ID 取词,两个 ID 都拿不到时一个请求都不发、传输层表里没有它。
+	// 判据故意要求**网易云和 QQ 都**带传输层代码:只有一边死、另一边正常答了却没匹配上,
+	// amll 缺 ID 是"上游没这首"的正常结果,不是连不上,那时如实留空("未给出候选")。
+	// 网易云 / QQ 被用户关掉时它们不发请求、没有传输层记录 → 也不派生:那时 amll 缺 ID 是
+	// 配置使然,不是网络(要不要在界面上单说这一点,归「未启用」那档管)。
+	if amllSkippedForMissingIDs && enabled("amll") && !containsString(responded, "amll") {
+		if _, has := reasons["amll"]; !has && transport["netease"] != "" && transport["qq"] != "" {
+			reasons["amll"] = lyricFailureReasonUpstreamUnreachable
+		}
+	}
+	if len(reasons) == 0 {
+		return nil
+	}
+	return reasons
+}
+
+// lyricsEmptyInCacheFile 只读地回答一句:enrich 缓存里这首歌现在**有没有歌词**。
+//
+// 为什么不复用 loadEnrichCache:那个会设 enrichPath(等于给这个一次性进程开了写权限)、
+// 解析失败时还会把用户的缓存文件改名成 .corrupt。这条路径只想读一个字段,不该有任何
+// 副作用。
+//
+// 返回 known=false 表示"问不出来"(文件读不了/解析不动),调用方必须按**最保守**的那一支走。
+// key 不存在算 empty=true:那就是一首还没被解析过的新歌,本来就没有歌词。
+//
+// ⚠️ key 用**原样**标签算(enrichKey 内部只做 cleanMediaTag/normEnrichTitle,不做繁简转换),
+// 所以这里传的必须是命令行原参数,不是 toSimplified 之后那三个。
+func lyricsEmptyInCacheFile(path, artist, title, album string) (empty bool, known bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, false
+	}
+	var m map[string]struct {
+		Lyrics string `json:"lyrics"`
+	}
+	if err := json.Unmarshal(data, &m); err != nil || m == nil {
+		return false, false
+	}
+	e, ok := m[enrichKey(artist, title, album)]
+	if !ok {
+		return true, true
+	}
+	return e.Lyrics == "", true
+}
