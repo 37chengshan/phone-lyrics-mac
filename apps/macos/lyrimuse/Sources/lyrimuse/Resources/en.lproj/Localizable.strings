@@ -416,6 +416,7 @@
 "在任何 App 里都能触发，需搭配 ⌘ ⌥ ⌃ 之一" = "Work in any app; must include ⌘, ⌥ or ⌃";
 "在企业微信群里：群设置 → 群机器人 → 添加机器人，创建后复制 Webhook 地址，不需要额外的签名设置" = "In your WeCom group: Group Settings → Group Bots → Add a Bot, then copy the webhook URL after creating it. No extra signature setup is needed";
 "在其他设备上播放，Last.fm 已收到" = "Playing on another device; Last.fm has received it";
+"在手机上用 QQ 音乐放一首歌" = "Play a track in QQ Music on your phone";
 "在播放器中打开" = "Show in Player";
 "在播放器里播放任意歌曲，歌词会自动出现" = "Play something in your player and lyrics will appear here";
 "在歌词一格的最左或最右放一枚菜单栏图标，图标颜色从下往上涨表示播放进度：涨上来的用「已唱到」色，其余用「未唱到」色。只在显示歌词时出现。" = "Puts a menu bar icon at the far left or right of the lyrics slot; its color rises from the bottom to show playback progress — the risen part in Sung Color, the rest in Unsung Color. Only appears while lyrics are showing.";
@@ -529,6 +530,7 @@
 "已显示灵动岛歌词" = "Notch lyrics shown";
 "已显示菜单栏歌词" = "Menu bar lyrics shown";
 "已显示译文" = "Translation shown";
+"已暂停" = "Paused";
 "已更新到 %@" = "Updated to %@";
 "已校准" = "Calibrated";
 "已校准 %d 首歌的歌词时间轴" = "%d songs with calibrated timing";
@@ -538,6 +540,7 @@
 "已给出候选" = "Returned a candidate";
 "已缓存罗马音" = "Cached Romanization";
 "已补 %@ 条" = "%@ backfilled";
+"已解析出歌词" = "Lyrics resolved";
 "已解锁 %@ 首" = "Unlocked %@ songs";
 "已解锁位置" = "Position unlocked";
 "已设置" = "Set";
@@ -696,6 +699,7 @@
 "搜索设置" = "Search Settings";
 "撤回「纯音乐」结论，这首歌重新回到自动补搜歌词的队列" = "Withdraw the instrumental verdict; this track goes back into the automatic lyric-retry queue";
 "播放/暂停" = "Play/Pause";
+"播放中" = "Playing";
 "播放器" = "Player";
 "播放器联动" = "Player Linkage";
 "播放指示条，跟着音量起伏摆动，跟耳朵里选的内容共存显示（选了「播放控制」时让位）。关掉之后两只耳朵纯按你选的模块渲染，灵动岛也能配得更窄。" = "A playback indicator that pulses with the audio. It coexists with whatever content that ear shows (it yields when that ear is set to \"Playback Controls\"). Turn it off and both ears render purely by their chosen module — the Dynamic Island can also be sized narrower.";
@@ -1063,6 +1067,7 @@
 "第三方许可" = "Third-party licenses";
 "等待 Last.fm 确认（通常几秒内）" = "Waiting for Last.fm to acknowledge (usually a few seconds)";
 "等待手机" = "Waiting for Phone";
+"等待手机播放" = "Waiting for Playback";
 "签名密钥（可选）" = "Signature Secret (Optional)";
 "简体" = "Simplified";
 "简体中文" = "简体中文";
@@ -1327,6 +1332,7 @@
 "这首歌在你 Last.fm 上的第几次收听，点一下看合并了哪些写法" = "Which play of this track this was in your Last.fm history. Click to see which spellings were merged";
 "这首歌没有歌词或还在搜索时，用「♪ 歌名」占住歌词的位置，不缩回小图标；歌词一到就换成歌词。暂停时仍缩回图标，广告中不显示" = "While a song has no lyrics or is still being searched, keep the lyrics slot with “♪ Title” instead of collapsing to the icon; the line is swapped in as soon as lyrics arrive. Still collapses when paused, and never shows during ads";
 "这首歌第一次播放，正在联网搜索歌词，完成后会自动显示，不需要手动刷新。" = "First time playing this track, so lyrics are being searched for online. They will appear on their own — no need to refresh.";
+"这首歌还没有歌词，可到「歌词」页手动搜索" = "No lyrics yet for this track — search manually under Lyrics";
 "进入全屏" = "Enter Full Screen";
 "连上之后，你播放的每一首歌都会自动 scrobble 到 Last.fm" = "Once connected, every track you play is scrobbled to Last.fm automatically";
 "连上之后，你播放的每一首歌都会自动 scrobble 到 Last.fm，还能在这里看到你专属的听歌档案" = "Once connected, every track you play is scrobbled to Last.fm automatically, and you'll get your own listening profile here too";

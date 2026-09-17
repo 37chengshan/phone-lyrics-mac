@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用图标前景(2026-09-17 补)。原来 manifest 用的是 @android:drawable/ic_media_play ——
+  系统自带的播放三角,装在桌面上跟"歌词中继"这个身份毫无关系,而且那是给菜单项用的
+  图标,不是应用图标(没有自适应裁切、在圆形/方形图标包里样子都会怪)。
+
+  图形取"手机把歌词送出去"这件事:一台手机的侧影 + 右侧三道向外扩散的声波。
+  声道用不等长的弧,读起来是"在传东西"而不是静态装饰。
+
+  ⚠️ 自适应图标的前景画布是 108×108,但**只有中间 72×72 是安全区** —— 外围会被系统
+  按不同形状裁掉(圆形图标包裁得最狠,四角全没)。图形必须整个落在 18..90 这个区间里。
+  实测过一次:内容包围盒当时是 x 16..79.8,左缘越界 2 单位,圆形图标包里手机左边会被切掉。
+  现在整组套一个 `translateX=6`,把 63.8 宽的内容居中到安全区(22.1..85.9,两侧各留 ~4)。
+  ⚠️ 之所以用 group 平移而不是逐个改 path 坐标:改坐标要同时改九条路径的每个数字,
+  下次再调构图还得再来一遍;平移是一个数,改完一眼能看出移了多少。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 整组右移 6,把内容压进安全区中心。 -->
+    <group android:translateX="6">
+
+    <!-- 手机机身:圆角矩形。宽度 30、高度 48、垂直居中(30..78)。 -->
+    <path
+        android:fillColor="#7AA2FF"
+        android:pathData="M21,30 h24 a5,5 0 0 1 5,5 v38 a5,5 0 0 1 -5,5 h-24 a5,5 0 0 1 -5,-5 v-38 a5,5 0 0 1 5,-5 z" />
+
+    <!-- 机身掏空成描边效果:叠一个深色内芯,留 5 单位边框。 -->
+    <path
+        android:fillColor="#0B0D11"
+        android:pathData="M21,36 h24 a2,2 0 0 1 2,2 v30 a2,2 0 0 1 -2,2 h-24 a2,2 0 0 1 -2,-2 v-30 a2,2 0 0 1 2,-2 z" />
+
+    <!-- 屏幕上的三行"歌词":不等宽,读起来是文本而不是条纹。 -->
+    <path
+        android:fillColor="#7AA2FF"
+        android:pathData="M24,44 h20 v3.5 h-20 z" />
+    <path
+        android:fillColor="#7AA2FF"
+        android:pathData="M24,51 h13 v3.5 h-13 z" />
+    <path
+        android:fillColor="#5B7FD4"
+        android:pathData="M24,58 h17 v3.5 h-17 z" />
+
+    <!-- 声波:三道向右扩散的弧。用 stroke 画、不填充;越外圈越淡,读作"传出去"。 -->
+    <path
+        android:pathData="M56,46 a10,10 0 0 1 0,16"
+        android:strokeColor="#7AA2FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M63,41 a17,17 0 0 1 0,26"
+        android:strokeColor="#7AA2FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.75" />
+    <path
+        android:pathData="M70,36 a24,24 0 0 1 0,36"
+        android:strokeColor="#7AA2FF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.45" />
+
+    </group>
+</vector>
+

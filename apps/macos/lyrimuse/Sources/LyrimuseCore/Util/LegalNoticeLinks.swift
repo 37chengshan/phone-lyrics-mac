@@ -7,10 +7,15 @@ import Foundation
 /// 要同步的真源。这里只做"按界面语言挑哪份 README、拼哪个锚点"这一个纯判断;打开动作在 App 侧
 /// `LegalNotices`,两处入口(设置「关于」页、引导欢迎页)都走它。
 public enum LegalNoticeLinks {
-    public static let repo = "https://github.com/Yudaotor/lyrimuse"
+    /// 本 fork 自己的仓库(2026-09-17 从上游改过来)。
+    ///
+    /// ⚠️ 说明正文**不在这里**,也不是上游那份 README 了 —— 本 fork 的说明写在自己仓库的
+    /// README 里(中英两节,见 `usageNoticeURL` 的锚点约定)。上游那份 README 描述的是
+    /// 「读本机播放器」的产品,跟本 fork 的行为对不上,把人导过去只会更困惑。
+    public static let repo = "https://github.com/37chengshan/phone-lyrics-mac"
 
     /// 随包分发的 THIRD_PARTY_LICENSES 在 GitHub 上的同一份;包里那份打不开时的兜底。
-    public static let thirdPartyLicensesOnGitHub = URL(string: repo + "/blob/main/THIRD_PARTY_LICENSES")!
+    public static let thirdPartyLicensesOnGitHub = URL(string: repo + "/blob/main/apps/macos/THIRD_PARTY_LICENSES")!
 
     /// 仓库根的 LICENSE(GPL-3.0 全文)。关于页「开源许可证」那一行开它。
     public static let licenseOnGitHub = URL(string: repo + "/blob/main/LICENSE")!
@@ -22,10 +27,10 @@ public enum LegalNoticeLinks {
     public static func usageNoticeURL(language: String) -> URL {
         var components = URLComponents(string: repo)!
         if language.lowercased().hasPrefix("zh") {
-            components.path = "/Yudaotor/lyrimuse/blob/main/README.zh-CN.md"
+            components.path = "/37chengshan/phone-lyrics-mac/blob/main/README.md"
             components.fragment = "许可与版权说明"
         } else {
-            components.path = "/Yudaotor/lyrimuse/blob/main/README.md"
+            components.path = "/37chengshan/phone-lyrics-mac/blob/main/README.md"
             components.fragment = "license-and-copyright"
         }
         return components.url!

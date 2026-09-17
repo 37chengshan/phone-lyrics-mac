@@ -1327,37 +1327,41 @@ func runSourceContractTests() {
     // ④ build.sh 还在把 THIRD_PARTY_LICENSES 拷进包、CI 还在跑声明覆盖检查。
     do {
         let en = LegalNoticeLinks.usageNoticeURL(language: "en")
-        expectEqual(en.absoluteString, "https://github.com/Yudaotor/lyrimuse/blob/main/README.md#license-and-copyright",
+        expectEqual(en.absoluteString, "https://github.com/37chengshan/phone-lyrics-mac/blob/main/README.md#license-and-copyright",
                     "版权说明: 英文界面开英文 README 的 License and Copyright 一节")
         let hans = LegalNoticeLinks.usageNoticeURL(language: "zh-hans")
         expectEqual(hans.absoluteString,
-                    "https://github.com/Yudaotor/lyrimuse/blob/main/README.zh-CN.md#%E8%AE%B8%E5%8F%AF%E4%B8%8E%E7%89%88%E6%9D%83%E8%AF%B4%E6%98%8E",
+                    "https://github.com/37chengshan/phone-lyrics-mac/blob/main/README.md#%E8%AE%B8%E5%8F%AF%E4%B8%8E%E7%89%88%E6%9D%83%E8%AF%B4%E6%98%8E",
                     "版权说明: 简体界面开中文 README 的「许可与版权说明」,锚点百分号编码")
         expectEqual(LegalNoticeLinks.usageNoticeURL(language: "zh-hant"), hans, "版权说明: 繁体界面跟简体开同一份中文 README")
         expectEqual(LegalNoticeLinks.usageNoticeURL(language: "system"), en, "版权说明: 认不出的取值当英文")
         expectEqual(LegalNoticeLinks.thirdPartyLicensesOnGitHub.absoluteString,
-                    "https://github.com/Yudaotor/lyrimuse/blob/main/THIRD_PARTY_LICENSES", "版权说明: 第三方许可的 GitHub 兜底指向仓库根那份")
+                    "https://github.com/37chengshan/phone-lyrics-mac/blob/main/apps/macos/THIRD_PARTY_LICENSES", "版权说明: 第三方许可的 GitHub 兜底指向仓库里那份")
 
         let packageDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()  // …/lyrimuse(包目录)
         let repoRoot = packageDir.deletingLastPathComponent()
+        // ⚠️ 2026-09-17:`repoRoot` 上面那一行算出来的是 **apps/macos/**(上游子树),不是仓库根。
+        // 本 fork 把说明正文搬到了**自己仓库的根 README**,所以"锚点还在不在"这件事必须问
+        // 那一份,不能问子树里那份英文 README —— 问错了的表现是"守卫盯着一个我们不再引用的
+        // 文件",真正的链接断了它反而看不见。再多上溯两层才是仓库根。
+        let trueRepoRoot = repoRoot.deletingLastPathComponent().deletingLastPathComponent()
         func read(_ url: URL) -> String? { try? String(contentsOfFile: url.path, encoding: .utf8) }
         func codeLines(_ text: String) -> [String] {
             text.split(separator: "\n", omittingEmptySubsequences: false)
                 .map { String($0).trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.hasPrefix("//") && !$0.hasPrefix("///") }
         }
-        if let readme = read(repoRoot.appendingPathComponent("README.md")) {
+        if let readme = read(trueRepoRoot.appendingPathComponent("README.md")) {
             expectEqual(readme.contains("\n## License and Copyright\n"), true,
                         "版权说明: README.md 要有「## License and Copyright」—— 锚点 license-and-copyright 由它生成")
-        } else {
-            expectEqual(true, false, "版权说明: 读不到 README.md(路径挪了?)")
-        }
-        if let readme = read(repoRoot.appendingPathComponent("README.zh-CN.md")) {
+            // ⚠️ 本 fork 2026-09-17 起**只有一份 README**(中英两节都在里面),不再是上游那种
+            // 中英分两个文件。两个锚点因此都要落在同一份上 —— 这是这份守卫跟着改的原因:
+            // 它原来断言的是"中文锚点在 README.zh-CN.md 里",那是上游的文件布局。
             expectEqual(readme.contains("\n## 许可与版权说明\n"), true,
-                        "版权说明: README.zh-CN.md 要有「## 许可与版权说明」—— 中文锚点由它生成")
+                        "版权说明: README.md 要有「## 许可与版权说明」—— 中文锚点由它生成")
         } else {
-            expectEqual(true, false, "版权说明: 读不到 README.zh-CN.md(路径挪了?)")
+            expectEqual(true, false, "版权说明: 读不到仓库根的 README.md(路径挪了?)")
         }
         let appSources = packageDir.appendingPathComponent("Sources/lyrimuse")
         if let settings = read(appSources.appendingPathComponent("SettingsView.swift")) {

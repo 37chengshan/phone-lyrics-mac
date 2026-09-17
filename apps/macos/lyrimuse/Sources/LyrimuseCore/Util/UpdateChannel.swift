@@ -10,7 +10,13 @@ import Foundation
 /// channel 过滤(`allowedChannels`)仍然接上,是第二道保险:预发布 appcast 的 item 都带 `<sparkle:channel>beta</sparkle:channel>`,
 /// 开关关着的实例即使被手动 `defaults write` 指到一份 beta appcast 也看不见它。
 public enum UpdateChannel {
-    public static let repository = "Yudaotor/lyrimuse"
+    /// 本 fork 自己的仓库。
+    ///
+    /// ⚠️ 2026-09-17 从上游 `Yudaotor/lyrimuse` 改成本项目。上游那份的版本号(1.7.x)远高于本 fork,
+    /// 继续指着它会出两个问题:①「接收测试版更新」读 Release 列表时列的全是上游版本,用户点进去
+    /// 下到的是不含手机播放源的包;②「软件更新」页的 ⓘ 会跳到上游的 release 页。
+    /// 本 fork 的版本号自成一条线(0.x),跟上游不可比,所以更新通道必须各走各的。
+    public static let repository = "37chengshan/phone-lyrics-mac"
     /// 匿名读公开仓库的 Release 列表,**不带凭据**;30 条足够覆盖最近若干正式版 + 预发布。跟 star 数同一个 host,
     /// 01 章「对外请求」那张表登记的是 host 级别。
     public static let releasesAPIURL = URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=30")!

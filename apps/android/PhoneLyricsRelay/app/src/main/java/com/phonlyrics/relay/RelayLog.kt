@@ -19,6 +19,9 @@ import java.util.Locale
 object RelayLog {
     private const val FILE_NAME = "relay-log.txt"
     private const val HEARTBEAT_KEY = "serviceHeartbeatMs"
+    private const val NOW_TITLE_KEY = "nowTitle"
+    private const val NOW_ARTIST_KEY = "nowArtist"
+    private const val NOW_PLAYING_KEY = "nowPlaying"
     private const val PREFS = "relay"
     private const val ALIVE_WINDOW_MS = 8_000L
     private const val MAX_LINES = 200
@@ -75,6 +78,37 @@ object RelayLog {
         return last > 0 && System.currentTimeMillis() - last < ALIVE_WINDOW_MS
     }
 
+    /// 把"此刻在同步哪首歌"写给界面(2026-09-17)。
+    ///
+    /// 原先界面上只有一个笼统的"运行中",用户看不到当前曲目 —— 而那正是判断整条链路通没通
+    /// 最直接的证据:标题出现在这里,就说明通知使用权生效、QQ 音乐被认出来了、采集在跑。
+    /// 用 SharedPreferences 而不是广播:Activity 被系统重建后读一次就能拿到最新值,
+    /// 不依赖"它在场时才收得到"这种时序假设。
+    fun publishNowPlaying(context: Context, title: String, artist: String, playing: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(NOW_TITLE_KEY, title)
+            .putString(NOW_ARTIST_KEY, artist)
+            .putBoolean(NOW_PLAYING_KEY, playing)
+            .apply()
+    }
+
+    /// 清掉当前曲目(停止同步时)。不清的话下次打开界面会显示上一首歌,像是还在播。
+    fun clearNowPlaying(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(NOW_TITLE_KEY).remove(NOW_ARTIST_KEY).remove(NOW_PLAYING_KEY)
+            .apply()
+    }
+
+    /// 界面读当前曲目。三项一起返回,免得调用方分三次读、拼出一个半新半旧的组合。
+    fun nowPlaying(context: Context): Triple<String, String, Boolean> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Triple(
+            prefs.getString(NOW_TITLE_KEY, "").orEmpty(),
+            prefs.getString(NOW_ARTIST_KEY, "").orEmpty(),
+            prefs.getBoolean(NOW_PLAYING_KEY, false),
+        )
+    }
+
     /// 读出最近几条(诊断页展示用)。
     fun tail(context: Context, lines: Int = 12): String {
         val file = File(context.filesDir, FILE_NAME)
@@ -96,4 +130,3 @@ object RelayLog {
         }
     }
 }
-

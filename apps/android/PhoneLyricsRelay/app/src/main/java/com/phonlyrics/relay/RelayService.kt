@@ -129,13 +129,22 @@ class RelayService : Service() {
         previous = snapshot
         queue.enqueue(factory.next(event, snapshot))
         updateNotification("同步中 · ${snapshot.title} · ${snapshot.artist}")
+        // 把当前曲目发布给界面(2026-09-17)。用户实测反馈"状态显示不完整":原来界面上只有
+        // 一个笼统的"运行中",看不到**正在同步哪首歌** —— 而这恰恰是判断"到底通没通"最直接的
+        // 证据。走 SharedPreferences 而不是 LocalBroadcast:Activity 可能在后台上被系统重建,
+        // 重建后读一次就能拿到最新值,不需要收发配对的时序假设。
+        RelayLog.publishNowPlaying(applicationContext, snapshot.title, snapshot.artist,
+            snapshot.state == WirePlaybackState.PLAYING)
     }
 
     private fun notification(text: String): Notification {
         val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, "relay")
             .setContentTitle("手机歌词同步").setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_media_play).setContentIntent(pending)
+            // 通知图标同步换成自己的(2026-09-17):原来用的是系统播放三角,跟应用图标对不上。
+            // ⚠️ 通知的 smallIcon 必须是**单色**图形,系统只取它的 alpha 通道着色 —— 直接用
+            // 那个彩色的应用图标会渲染成一坨实心方块,所以这里单独给一份白色剪影版。
+            .setSmallIcon(R.drawable.ic_notification).setContentIntent(pending)
             .setOngoing(true).setOnlyAlertOnce(true).build()
     }
 

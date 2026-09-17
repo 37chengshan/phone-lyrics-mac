@@ -31,6 +31,20 @@ class MainActivity : AppCompatActivity() {
     private var selectedMac: DiscoveredMac? = null
     private var currentTab = Tab.STATUS
     private lateinit var discovery: MacDiscoveryManager
+    /// 系统级"减弱动态效果"开关。开着时不做淡入/缩放动画 —— 这不是可选的礼貌:设置里有这个
+    /// 开关的人,往往是因为动画会引发不适,给他们照常播动画比"界面朴素一点"糟糕得多。
+    /// 读系统的 `animator_duration_scale`,它正是开发者选项与无障碍设置共同写的那一个。
+    private val reduceMotion: Boolean by lazy {
+        Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    /// 每秒把服务发布的曲目状态拉进界面。见 refreshUi 里读 nowPlaying 的那一段。
+    private val uiTicker = android.os.Handler(android.os.Looper.getMainLooper())
+    private val uiTick = object : Runnable {
+        override fun run() {
+            refreshUi()
+            uiTicker.postDelayed(this, 1_000)
+        }
+    }
 
     private val macIp by lazy { findViewById<EditText>(R.id.macIp) }
     private val macPort by lazy { findViewById<EditText>(R.id.macPort) }
@@ -90,7 +104,20 @@ class MainActivity : AppCompatActivity() {
         refreshUi()
     }
 
-    override fun onResume() { super.onResume(); refreshUi() }
+    override fun onResume() {
+        super.onResume()
+        refreshUi()
+        // 服务把曲目写在 SharedPreferences 里、不会主动推给界面(见 RelayLog.publishNowPlaying
+        // 的注释),所以这里自己按秒拉。只在可见时跑 —— 退到后台就该停,不该为了一个没人看的
+        // 数字每秒唤醒一次主线程。
+        uiTicker.removeCallbacks(uiTick)
+        uiTicker.postDelayed(uiTick, 1_000)
+    }
+
+    override fun onPause() {
+        uiTicker.removeCallbacks(uiTick)
+        super.onPause()
+    }
 
     override fun onDestroy() { discovery.stop(); super.onDestroy() }
 
@@ -224,6 +251,8 @@ class MainActivity : AppCompatActivity() {
     private fun stopRelay() {
         stopService(Intent(this, RelayService::class.java))
         getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
+        // 曲目也要清掉:不清的话界面会停在上一次播的那首歌上,看起来像是还在同步。
+        RelayLog.clearNowPlaying(this)
         running = false
         RelayLog.note("relay stopped")
         refreshUi()
@@ -241,10 +270,20 @@ class MainActivity : AppCompatActivity() {
             getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         }
 
-        statusPill.text = when {
+        val pillText = when {
             running -> "运行中"
             paired -> "已配对"
             else -> "未配对"
+        }
+        // 状态变化时轻微弹一下。这是整页最该被注意到的那个字 —— 用户点完「开始同步」第一眼
+        // 就看它有没有变成绿色的「运行中」,而原来它是瞬间换字,没有任何"它变了"的提示。
+        if (statusPill.text.toString() != pillText) {
+            statusPill.text = pillText
+            if (!reduceMotion) {
+                statusPill.scaleX = 0.9f
+                statusPill.scaleY = 0.9f
+                statusPill.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+            }
         }
         statusPill.setTextColor(if (running || paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
         headerDetail.text = when {
@@ -264,6 +303,27 @@ class MainActivity : AppCompatActivity() {
             running -> "换首歌看看,Mac 上应该会跟着显示歌词"
             paired -> "点下面的按钮开始把播放状态推到 Mac"
             else -> "先到「连接」页和 Mac 配对"
+        }
+
+        // ── 当前曲目(2026-09-17 接上服务发布的实时值) ──
+        //
+        // 用户实测反馈"状态显示"不够——原来这里只有一句笼统的"同步已开启",看不出到底在同步
+        // 什么。曲目标题出现在这几行里,是"整条链路真的通了"最直接的证据:它意味着通知使用权
+        // 生效、QQ 音乐被认出来、采集与发送都在跑。
+        //
+        // 还没读到曲目时给**可操作**的下一步(去开权限 / 去选歌),不是干等 —— 空着一个破折号
+        // 用户不知道是该等还是该做什么。
+        val (title, artist, playing) = RelayLog.nowPlaying(this)
+        if (running && title.isNotBlank()) {
+            setTextIfChanged(nowTitle, title)
+            setTextIfChanged(nowArtist, artist.ifBlank { "未知歌手" } + if (playing) " · 播放中" else " · 已暂停")
+        } else {
+            setTextIfChanged(nowTitle, "—")
+            setTextIfChanged(nowArtist, when {
+                !running -> "还没有开始同步"
+                !notifEnabled -> "等通知使用权开启后才能读到"
+                else -> "等待 QQ 音乐开始播放"
+            })
         }
 
         pairState.text = if (paired) "已配对" else "尚未配对"
@@ -291,6 +351,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isPaired(): Boolean = !SecureTokenStore(this).load().isNullOrBlank()
+
+    /// 只在值真变了时才写 TextView,并给一次轻微淡入。
+    ///
+    /// refreshUi 每秒被调一次(见 onResume 起的定时器),无条件赋值会让每次都触发一次重绘、
+    /// 长标题还会反复走一遍省略号排版 —— 界面上表现为文字在微微抖。同时"变了"本身值得一个
+    /// 提示:曲目换了、状态翻了,淡一下比瞬间跳变更容易被注意到。
+    private fun setTextIfChanged(view: TextView, value: String) {
+        if (view.text.toString() == value) return
+        view.text = value
+        if (reduceMotion) return
+        view.alpha = 0.55f
+        view.animate().alpha(1f).setDuration(180).start()
+    }
 
     private fun isNotificationListenerEnabled(): Boolean {
         val cn = ComponentName(this, NotificationListener::class.java)

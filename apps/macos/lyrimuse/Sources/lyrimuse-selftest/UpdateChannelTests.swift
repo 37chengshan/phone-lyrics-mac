@@ -78,7 +78,9 @@ func runUpdateChannelTests() {
         expectEqual(U.newestRelease(releases ?? [])?.tag, "v1.6.0-beta.2",
                     "挑选: 非 draft、能解析里版本最高的 → beta.2(draft 的 beta.3 不算,nightly 解析不了跳过)")
         expectEqual(U.betaFeedURL(releases: releases ?? [])?.absoluteString,
-                    "https://github.com/Yudaotor/lyrimuse/releases/download/v1.6.0-beta.2/appcast.xml",
+                    // 仓库名走常量,不写死 —— 2026-09-17 本 fork 把更新通道改指自己的仓库时,
+                    // 写死的那份当场变红,而它测的"目录是 tag 而不是 latest"跟仓库叫什么无关。
+                    "https://github.com/\(U.repository)/releases/download/v1.6.0-beta.2/appcast.xml",
                     "挑选: appcast 在它自己的 tag 目录下,不是 latest")
         let after = [U.Release(tag: "v1.6.0-beta.2", prerelease: true, draft: false),
                      U.Release(tag: "v1.6.0", prerelease: false, draft: false)]
@@ -96,7 +98,7 @@ func runUpdateChannelTests() {
         expectEqual(U.shouldRefresh(now: now, fetchedAt: now.addingTimeInterval(600), retryNotBefore: nil), true, "刷新: 取数时间在未来(时钟回拨)→ 当过期")
         expectEqual(U.shouldRefresh(now: now, fetchedAt: nil, retryNotBefore: now.addingTimeInterval(60)), false, "刷新: 退避期内连首次也不发")
         expectEqual(U.releasesAPIURL.host, "api.github.com", "地址: 只打 api.github.com(01 章对外请求表已登记这个 host)")
-        expectEqual(U.appcastURL(forTag: "v1.6.0").absoluteString.hasPrefix("https://github.com/Yudaotor/lyrimuse/releases/download/v1.6.0/"), true,
+        expectEqual(U.appcastURL(forTag: "v1.6.0").absoluteString.hasPrefix("https://github.com/\(U.repository)/releases/download/v1.6.0/"), true,
                     "地址: appcast 目录与 release.yml 里 enclosure 的目录同形")
 
         // 真网核对(默认不跑):LYRIMUSE_LIVE_GITHUB=1 时真的拉一次 Release 列表,断言解析得动、挑出来的是个合法版本。

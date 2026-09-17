@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标背景层。用应用主色板里的深底(#0B0D11,跟界面背景同一个值)——
+     前景的蓝色图形压在这个底上对比度足够,而且跟 App 内的观感是同一套颜色,
+     不会出现"图标是浅底、打开却是深色界面"的割裂。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#0B0D11" />
+</shape>
+

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  通知栏小图标(2026-09-17)。
+
+  ⚠️ 通知的 smallIcon 跟应用图标是**两套要求**,不能复用:系统只取这幅图的 alpha 通道,
+  然后按通知栏的配色要求统一着色(通常是白色)。直接塞那个彩色的应用图标进去,渲染结果是
+  一坨实心白方块 —— 所有不同颜色的部分在 alpha=1 处塌成一片,图形的层次全没了。
+
+  所以这里是专门的一份**白色剪影**:形状沿用应用图标的"手机 + 声波",但全部用白色填充,
+  并且去掉机身内芯那层"掏空"(那是靠深色覆盖做出来的视觉描边,在单色场景里会变成一个
+  没有意义的黑洞)。描边改用 stroke 直接画,轮廓才立得住。
+
+  画布 24×24 是通知图标的惯例尺寸(系统会按密度缩放)。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+
+    <!-- 手机外框,用 stroke 画成空心矩形(单色下比实心更好认)。 -->
+    <path
+        android:pathData="M4,5.5 h8 a1.2,1.2 0 0 1 1.2,1.2 v10.6 a1.2,1.2 0 0 1 -1.2,1.2 h-8 a1.2,1.2 0 0 1 -1.2,-1.2 v-10.6 a1.2,1.2 0 0 1 1.2,-1.2 z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.6"
+        android:fillColor="#00000000" />
+
+    <!-- 屏幕里的两行歌词(24 的画布上只放得下两条,三条会糊成一团)。 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4.6,8.6 h6.2 v1.5 h-6.2 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4.6,11.6 h4 v1.5 h-4 z" />
+
+    <!-- 声波两道(24 的画布上三道太挤,两道足够读出"传出去")。 -->
+    <path
+        android:pathData="M16.2,8.4 a5,5 0 0 1 0,7.2"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M19,5.6 a9,9 0 0 1 0,12.8"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeAlpha="0.65" />
+</vector>
+

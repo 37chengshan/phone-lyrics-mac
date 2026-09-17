@@ -17,7 +17,8 @@ public enum GitHubStars {
     /// 只读这一个接口,拿 `stargazers_count`。匿名调用即可(公开仓库),因此**不带任何
     /// 凭据** —— 这一行请求里没有 token、没有用户信息,审计日志里也只会出现 host。
     /// 匿名配额是每 IP 每小时 60 次,而下面的 TTL 是 6 小时,离配额差着两个数量级。
-    public static let repoAPIURL = URL(string: "https://api.github.com/repos/Yudaotor/lyrimuse")!
+    /// 本 fork 自己的仓库(2026-09-17 从上游改过来)。「关于」页那颗星该是给这个项目的。
+    public static let repoAPIURL = URL(string: "https://api.github.com/repos/37chengshan/phone-lyrics-mac")!
 
     /// 多久重取一次。star 数是个慢变量,6 小时足够 —— 这个数字存在的意义是"开源免费,
     /// 你的 star 是最大的鼓励"那句话的凭据,不是实时看板。

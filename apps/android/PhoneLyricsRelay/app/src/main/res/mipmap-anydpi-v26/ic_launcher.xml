@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标(API 26+)。装到这个版本以上的机器上,系统会按桌面图标形状(圆形/方形/
+     水滴…)自己裁切并做前景视差 —— 这就是为什么前景必须把主体收在中心 72×72 里。 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
+

@@ -2942,6 +2942,9 @@ private final class PlayerTabStores: ObservableObject {
 
 private struct PhoneSettingsTab: View {
     @ObservedObject private var service = PhonePlaybackService.shared
+    /// 当前曲目走 PlaybackCoordinator(UI 层的门面),不直接碰 LocalPlaybackSource ——
+    /// 跟菜单栏/悬浮窗读的是同一份数据,三处显示不会各说各话。
+    @ObservedObject private var playback = PlaybackCoordinator.shared
     @State private var heartbeatStatus: PhoneConnectionStatus = .waiting
 
     var body: some View {
@@ -2964,6 +2967,21 @@ private struct PhoneSettingsTab: View {
                     title: L10n.t("自动发现"),
                     subtitle: service.serverStatus == "ready"
                         ? L10n.t("已通过 Bonjour 发布") : L10n.t("服务正在启动或等待网络")
+                ) { EmptyView() }
+                CardDivider()
+                // 当前曲目(2026-09-17 加)。手机端有、Mac 端也该有:这是"整条链路真的通了"
+                // 最直接的证据 —— 标题出现在这里,说明事件到达、校验通过、歌词管线接手了。
+                // 原来这一页只有连接状态,用户看不出"它到底在同步什么"。
+                SettingsRow(
+                    icon: "music.note",
+                    title: playback.title.isEmpty ? L10n.t("等待手机播放") : playback.title,
+                    subtitle: playback.title.isEmpty
+                        ? L10n.t("在手机上用 QQ 音乐放一首歌")
+                        : [playback.artist, playback.isPlayingNow ? L10n.t("播放中") : L10n.t("已暂停")]
+                            .filter { !$0.isEmpty }.joined(separator: " · "),
+                    // help 放歌词状态:标题行空间有限,而"有没有解析出歌词"是排查时第二个要看的
+                    help: playback.title.isEmpty ? nil : (playback.hasLyricsContent
+                        ? L10n.t("已解析出歌词") : L10n.t("这首歌还没有歌词，可到「歌词」页手动搜索"))
                 ) { EmptyView() }
             }
 
@@ -5383,7 +5401,10 @@ private struct AboutSettingsTab: View {
             communityCard
             legalCard
             diagnosticsCard
-            Text("© 2026 Yudaotor · GPL-3.0")
+            // ⚠️ 上游作者名**保留**(GPL-3.0 第 5 节要求保留版权声明),后面补上本 fork 的
+            // 归属。这不是可选的美化:这是一个基于 Lyrimuse 修改的衍生作品,抹掉上游署名
+            // 既违反许可证、也不诚实。
+            Text("© 2026 Yudaotor (Lyrimuse) · 37chengshan (phone-lyrics-mac) · GPL-3.0")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 2)
@@ -5424,17 +5445,12 @@ private struct AboutSettingsTab: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
             HStack(spacing: 10) {
-                // 落地页(微信/支付宝收款码)是独立的通用小仓库 Yudaotor/donate,托管在 GitHub Pages 上,
-                // 不跟 Lyrimuse 这一个项目绑定,后续其它项目也能复用 —— 这里只是一个外链按钮。
-                // 改版前它悬在卡片列底部、要滚到底才看得到;现在跟 GitHub 并排放页头,是这一页的首要动作。
+                // ⚠️ 上游那个「请作者喝杯咖啡」按钮(**指向 Yudaotor 的收款页**)2026-09-17 撤掉。
+                // 那是上游作者自己的收款页,本 fork 留着它等于拿别人的二维码替别人募捐 —— 既不是
+                // 本项目的意图,也容易让人以为钱进了这个项目。要重新加捐赠入口,得先有本 fork 自己的
+                // 落地页,不能直接复用上游那个地址。
                 Button {
-                    NSWorkspace.shared.open(URL(string: "https://yudaotor.github.io/donate/")!)
-                } label: {
-                    Label(L10n.t("请作者喝杯咖啡"), systemImage: "cup.and.saucer.fill")
-                }
-                .settingsProminentGlassButton(tint: .orange)
-                Button {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/Yudaotor/lyrimuse")!)
+                    NSWorkspace.shared.open(URL(string: "https://github.com/37chengshan/phone-lyrics-mac")!)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left.forwardslash.chevron.right")
@@ -5562,7 +5578,7 @@ private struct AboutSettingsTab: View {
                 subtitle: L10n.t("GitHub Issues")
             ) {
                 Button(L10n.t("前往")) {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/Yudaotor/lyrimuse/issues")!)
+                    NSWorkspace.shared.open(URL(string: "https://github.com/37chengshan/phone-lyrics-mac/issues")!)
                 }
             }
             CardDivider()
@@ -5575,7 +5591,7 @@ private struct AboutSettingsTab: View {
                 subtitle: L10n.t("GitHub Discussions")
             ) {
                 Button(L10n.t("前往")) {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/Yudaotor/lyrimuse/discussions/categories/ideas")!)
+                    NSWorkspace.shared.open(URL(string: "https://github.com/37chengshan/phone-lyrics-mac/discussions/categories/ideas")!)
                 }
             }
         }
