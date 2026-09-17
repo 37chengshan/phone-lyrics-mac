@@ -244,6 +244,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BrowserAutomationPermission.manuallyAddedFamilies = settings.manualBrowserFamilies
             .compactMapValues { BrowserAutomationPermission.Family(rawValue: $0) }
 
+        // Phone is the sole playback authority in this fork. Start the authenticated
+        // receiver before the coordinator's first poll so local Mac players can never
+        // briefly win during launch.
+        PhonePlaybackService.shared.start()
+
         // 状态栏那一项(图标/歌词/滚动歌词 + 下拉菜单)。2026-08-16 之前这是 App.swift 里
         // 的一个 MenuBarExtra 场景,现在是自建的 NSStatusItem,得在这里显式启动。
         // 生命周期自持(靠 Combine 订阅设置/播放状态),这里只需要点一次。

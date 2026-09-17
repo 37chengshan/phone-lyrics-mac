@@ -1059,6 +1059,13 @@ public final class LocalPlaybackSource: ObservableObject {
         stopFastTimer()
     }
 
+    /// Event-driven refresh used by the authenticated phone receiver. All state still
+    /// enters through `poll -> apply`, preserving the existing generation and lyric
+    /// synchronization invariants while avoiding the regular polling delay.
+    public func refreshNow() {
+        poll()
+    }
+
     // Music.app 每次换歌/暂停/恢复播放都会往分布式通知中心广播一条
     // "com.apple.Music.playerInfo"(系统级、无需任何额外权限,跟已有的"自动化"权限
     // 无关)。2026-08-04 借鉴 FlowX(Kadxy/FlowX,同类菜单栏歌词工具)加上这条订阅,

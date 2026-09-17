@@ -50,6 +50,11 @@ public enum MediaControlClient {
     ///     fetchMultiSelectedSnapshot,核对 media-control 报的系统级 Now Playing 焦点是不是
     ///     落在选中的这个子集里。
     public static func fetchSnapshot(players: Set<PlaybackPlayer> = PlaybackPlayerPreference.selected) -> MediaControlSnapshot? {
+        // Phone Lyrics mode is intentionally authoritative: the Mac only renders the
+        // phone's QQ Music session and never falls through to a local Mac player.
+        if PhonePlaybackBridge.shared.isEnabled {
+            return PhonePlaybackBridge.shared.mediaSnapshot()
+        }
         if players.contains(.auto) { return fetchAutoDetectedSnapshot() }
         if players == [.appleMusic] { return radioAwareAppleMusicSnapshot() }
         guard !players.isEmpty else { return nil }

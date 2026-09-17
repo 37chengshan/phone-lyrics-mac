@@ -42,6 +42,7 @@ let groups: [TestGroup] = [
     TestGroup(name: "playback-position", summary: "播放位置:外推伺服 / 锚点 / seek / 浏览器探针", run: runPlaybackPositionTests),
     TestGroup(name: "phone-protocol", summary: "手机播放协议:版本 / 字段 / QQ 来源验证", run: runPhoneProtocolTests),
     TestGroup(name: "phone-state", summary: "手机播放状态机:排序 / 锚点 / 漂移 / 超时", run: runPhonePlaybackStateMachineTests),
+    TestGroup(name: "phone-bridge", summary: "手机播放桥:原生快照 / collector 落盘 / 离线清理", run: runPhonePlaybackBridgeTests),
     TestGroup(name: "phone-pairing", summary: "手机配对:时效 / 限速 / token 摘要 / 撤销", run: runPhonePairingTests),
     TestGroup(name: "phone-http", summary: "手机 HTTP:路由 / 鉴权 / 请求边界", run: runPhoneHTTPRouterTests),
     TestGroup(name: "players", summary: "播放器身份 / 信任列表 / 播放模式 / 多选 / 广告判据 / 健康徽标", run: runPlayerIdentityTests),

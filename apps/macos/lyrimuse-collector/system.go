@@ -92,13 +92,10 @@ const getStateScript = `(() => {
 //     是不是落在选中的这个子集里,是的话才认(跟 getAutoDetectedState 同一套"系统只有
 //     一个焦点"的道理,只是准入名单从"内置五个+信任列表"收窄成"用户这次选中的这几个")。
 func getState(ctx context.Context) (map[string]any, bool) {
-	if features.Players[playerAuto] {
-		return getAutoDetectedState(ctx)
-	}
-	if len(features.Players) == 1 && features.Players[playerAppleMusic] {
-		return getAppleMusicOnlyState(ctx)
-	}
-	return getMultiSelectedState(ctx)
+	// This fork's single source of truth is QQ Music on the paired phone. Keeping
+	// the old readers below preserves upstream code for future rebases, but the
+	// active collector never mixes a local Mac player into the phone session.
+	return getPhoneState()
 }
 
 // getAppleMusicOnlyState 是「只勾了 Apple Music、没勾自动识别」这一种配置的读取路径。
