@@ -15,6 +15,7 @@ final class PhonePlaybackService: ObservableObject {
     private let server: PhoneHTTPServer
     private let stableMacId: String
     private var started = false
+    private var pairingExpirationTask: Task<Void, Never>?
 
     private init() {
         let defaults = UserDefaults.standard
@@ -35,7 +36,12 @@ final class PhonePlaybackService: ObservableObject {
             }
         }
         router.onPairingChanged = { [weak self] in
-            Task { @MainActor in self?.reloadDevices() }
+            Task { @MainActor in
+                self?.pairingCode = nil
+                self?.pairingExpirationTask?.cancel()
+                self?.reloadDevices()
+                self?.updateDiscovery(pairingEnabled: false)
+            }
         }
         server.onStateChange = { [weak self] state in
             Task { @MainActor in
@@ -96,7 +102,14 @@ final class PhonePlaybackService: ObservableObject {
     func beginPairing() -> PhonePairingCode {
         let code = router.activatePairingCode()
         pairingCode = code
-        restartServer(pairingEnabled: true)
+        updateDiscovery(pairingEnabled: true)
+        pairingExpirationTask?.cancel()
+        pairingExpirationTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(300))
+            guard !Task.isCancelled, self?.pairingCode?.value == code.value else { return }
+            self?.pairingCode = nil
+            self?.updateDiscovery(pairingEnabled: false)
+        }
         return code
     }
 
@@ -110,5 +123,12 @@ final class PhonePlaybackService: ObservableObject {
         } catch {
             serverStatus = "failed"
         }
+    }
+
+    private func updateDiscovery(pairingEnabled: Bool) {
+        let name = ProcessInfo.processInfo.hostName.split(separator: ".").first.map(String.init) ?? "Mac"
+        server.updateDiscovery(PhoneDiscoveryDescriptor(
+            serviceName: "\(name) · Lyrimuse", stableMacId: stableMacId,
+            pairingEnabled: pairingEnabled))
     }
 }

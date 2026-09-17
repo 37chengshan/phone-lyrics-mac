@@ -55,9 +55,18 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Mac 地址"
+                android:text="Mac 连接"
                 android:textColor="#8B93A1"
                 android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/discoveryStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="正在自动发现同一 Wi-Fi 下的 Mac…"
+                android:textColor="#7AA2FF"
+                android:textSize="13sp" />
 
             <EditText
                 android:id="@+id/macIp"
@@ -85,6 +94,29 @@
                 android:textColor="#EEF1F5"
                 android:textColorHint="#5C6470"
                 android:textSize="15sp" />
+
+            <EditText
+                android:id="@+id/pairingCode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/input_bg"
+                android:hint="Mac 上显示的 6 位配对码"
+                android:inputType="number"
+                android:maxLength="6"
+                android:padding="12dp"
+                android:textColor="#EEF1F5"
+                android:textColorHint="#5C6470"
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnPair"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/btn_primary"
+                android:text="配对并保存"
+                android:textColor="#0B0D11" />
 
             <Button
                 android:id="@+id/btnTest"

@@ -2,8 +2,7 @@ node_modules/
 dist/
 .DS_Store
 *.log
-android/PhoneLyricsRelay/.gradle/
-android/PhoneLyricsRelay/**/build/
-android/PhoneLyricsRelay/local.properties
-android/PhoneLyricsRelay/gradle/wrapper/gradle-wrapper.jar
-
+apps/android/PhoneLyricsRelay/.gradle/
+apps/android/PhoneLyricsRelay/**/build/
+apps/android/PhoneLyricsRelay/local.properties
+apps/android/PhoneLyricsRelay/gradle/wrapper/gradle-wrapper.jar

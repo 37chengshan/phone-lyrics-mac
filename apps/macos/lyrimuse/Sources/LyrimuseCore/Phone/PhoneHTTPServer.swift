@@ -34,6 +34,10 @@ public final class PhoneHTTPServer: @unchecked Sendable {
         port = nil
     }
 
+    public func updateDiscovery(_ discovery: PhoneDiscoveryDescriptor) {
+        queue.async { [weak self] in self?.listener?.service = discovery.service }
+    }
+
     private func handle(_ connection: NWConnection) {
         connection.start(queue: queue)
         receive(connection, accumulated: Data())
