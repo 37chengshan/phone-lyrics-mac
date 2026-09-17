@@ -25,7 +25,7 @@ class RelayService : Service() {
         private const val INTERVAL_MS = 1000L
     }
 
-    private lateinit var ip: String
+    private var ip: String = ""
     private var port = 8765
     private val handler = Handler(Looper.getMainLooper())
     private var manager: MediaSessionManager? = null
@@ -47,8 +47,13 @@ class RelayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ip = intent?.getStringExtra(EXTRA_IP) ?: ip
-        port = intent?.getIntExtra(EXTRA_PORT, port) ?: port
+        // START_STICKY restart may deliver a null intent — keep last known target.
+        intent?.getStringExtra(EXTRA_IP)?.takeIf { it.isNotBlank() }?.let { ip = it }
+        intent?.getIntExtra(EXTRA_PORT, -1)?.takeIf { it in 1..65535 }?.let { port = it }
+        if (ip.isBlank()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
 
         val notification = buildNotification("推送中 $ip:$port")
         startForeground(1, notification)
@@ -58,10 +63,11 @@ class RelayService : Service() {
             val componentName = ComponentName(this, NotificationListener::class.java)
             pickController(manager?.getActiveSessions(componentName))
             manager?.addOnActiveSessionsChangedListener(listener, componentName)
-        } catch (e: SecurityException) {
+        } catch (_: SecurityException) {
             // User must enable Notification Access
         }
 
+        handler.removeCallbacks(tick)
         handler.post(tick)
         return START_STICKY
     }

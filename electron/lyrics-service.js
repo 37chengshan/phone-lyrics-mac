@@ -35,9 +35,12 @@ class LyricsService {
     }
     if (!result) result = await this.tryLrclib(title, artist);
     if (!result) {
+      // Spec: show song name when no lyrics — do not inject demo lines under a real track.
       result = {
-        lines: parseLRC(DEMO_LRC),
-        source: 'demo-fallback',
+        lines: [
+          { timeMs: 0, text: `${artist ? artist + ' - ' : ''}${title}` },
+        ],
+        source: 'title-only',
       };
     }
     this.cache.set(key, result);

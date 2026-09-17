@@ -80,7 +80,11 @@ function snapshotState() {
     lyricSource,
     lyricReady: lyricLines.length > 0,
     positionMs: pos,
-    currentText: loc.current?.text ?? (nowPlaying ? `${nowPlaying.title}` : '等待手机'),
+    currentText: settings.demo
+      ? (loc.current?.text ?? '演示中')
+      : !connected
+        ? '等待手机'
+        : (loc.current?.text ?? (nowPlaying ? nowPlaying.title : '等待手机')),
     nextText: loc.next?.text ?? '',
   };
 }
@@ -95,9 +99,11 @@ function pushState() {
   }
 }
 
+let lyricsFetchSeq = 0;
 async function ensureLyrics(np) {
   const key = `${np.artist}::${np.title}`.toLowerCase();
   if (lyricKey === key && lyricLines.length) return;
+  const seq = ++lyricsFetchSeq;
   lyricKey = key;
   lyricLines = [];
   lyricSource = 'loading';
@@ -109,6 +115,7 @@ async function ensureLyrics(np) {
     return;
   }
   const result = await lyricsService.fetchLyrics(np.title, np.artist);
+  if (seq !== lyricsFetchSeq) return; // stale fetch
   lyricLines = result.lines;
   lyricSource = result.source;
   pushState();
