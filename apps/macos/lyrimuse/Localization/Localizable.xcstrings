@@ -32225,6 +32225,52 @@
           }
         }
       }
+    },
+    "手机已离线。检查手机上的中继是否还在运行" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phone is offline — check that the relay is still running on it"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机已离线。检查手机上的中继是否还在运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機已離線。檢查手機上的中繼是否還在執行"
+          }
+        }
+      }
+    },
+    "连接不稳定，正在等待恢复" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connection unstable — waiting to recover"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接不稳定，正在等待恢复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線不穩定，正在等待恢復"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

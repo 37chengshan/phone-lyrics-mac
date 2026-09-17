@@ -29,7 +29,7 @@ Mac 上不运行任何音乐播放器。手机通过局域网把播放状态推�
 
 **歌词来源**
 
-- 内置十个歌词源(网易云、QQ 音乐、酷狗、酷我、咪咕、Musixmatch、LRCLIB、AMLL、LyricFind 等)
+- 内置十个歌词源:网易云音乐、QQ 音乐、酷狗音乐、酷我音乐、咪咕音乐、Deezer、Musixmatch、LRCLIB、AMLL、LyricFind
 - 多源评分与择优,可用性测试,手动搜索与选择
 - 本地歌词库管理、备份与恢复
 
@@ -197,5 +197,4 @@ the changes are documented in [NOTICE](NOTICE), and the complete corresponding s
 in this repository.
 
 Upstream: Lyrimuse — https://github.com/Yudaotor/lyrimuse (baseline commit `e6bdf6a`).
-
 

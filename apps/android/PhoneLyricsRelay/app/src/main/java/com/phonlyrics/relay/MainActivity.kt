@@ -30,6 +30,10 @@ class MainActivity : AppCompatActivity() {
     private var running = false
     private var selectedMac: DiscoveredMac? = null
     private var currentTab = Tab.STATUS
+    /// 最近一次完整刷新读到的两项"贵"状态(配对、通知使用权)。每秒那条轻量刷新路径复用它们,
+    /// 自己不去读 —— 前者要开 AndroidKeyStore 解密、后者是跨进程查询(见 uiTick 的注释)。
+    private var lastKnownPaired = false
+    private var lastKnownNotifEnabled = false
     private lateinit var discovery: MacDiscoveryManager
     /// 系统级"减弱动态效果"开关。开着时不做淡入/缩放动画 —— 这不是可选的礼貌:设置里有这个
     /// 开关的人,往往是因为动画会引发不适,给他们照常播动画比"界面朴素一点"糟糕得多。
@@ -41,7 +45,18 @@ class MainActivity : AppCompatActivity() {
     private val uiTicker = android.os.Handler(android.os.Looper.getMainLooper())
     private val uiTick = object : Runnable {
         override fun run() {
-            refreshUi()
+            // ⚠️ 每秒这一拍**只**刷会变的那几项(曲目、心跳),不整个 refreshUi()。
+            //
+            // 2026-09-17 审查发现:第一版每秒调的是完整 refreshUi(),而它里面有三件**很贵**
+            // 的事 —— isPaired() 要开 AndroidKeyStore 做一次 AES-GCM 解密、isNotificationListener
+            // Enabled() 要读 Settings.Secure(跨进程 ContentProvider 查询)、RelayLog.tail() 要读写
+            // 文件。每秒在主线程做一遍这些,是给界面加了一次每秒一次的卡顿;而它们的结果其实
+            // 只在用户去系统设置改过之后才会变,不需要按秒盯。
+            //
+            // 拆法:这一拍只做"读 SharedPreferences 里那几个值 + 比较 + 必要时改文字",全是内存
+            // 操作;完整刷新仍走 refreshUi()(onResume、以及每次用户操作之后),那条路径本来就
+            // 覆盖了"用户刚从系统设置回来"的时机。
+            refreshLiveValues()
             uiTicker.postDelayed(this, 1_000)
         }
     }
@@ -259,8 +274,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshUi() {
-        val notifEnabled = isNotificationListenerEnabled()
-        val paired = isPaired()
+        // 先把"贵"的那三项读一次并记下来:每秒那条轻量路径(refreshLiveValues)要复用它们,
+        // 自己不去读 —— 理由见 uiTick 上方那段注释。
+        lastKnownNotifEnabled = isNotificationListenerEnabled()
+        lastKnownPaired = isPaired()
+        val notifEnabled = lastKnownNotifEnabled
+        val paired = lastKnownPaired
         val batteryOk = isBatteryExempt()
         // "running" 以服务自己的心跳为准,不只信 SharedPreferences —— 进程被杀之后
         // 那个布尔还是 true,界面会一直显示"运行中"而实际早就没了。
@@ -270,28 +289,7 @@ class MainActivity : AppCompatActivity() {
             getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         }
 
-        val pillText = when {
-            running -> "运行中"
-            paired -> "已配对"
-            else -> "未配对"
-        }
-        // 状态变化时轻微弹一下。这是整页最该被注意到的那个字 —— 用户点完「开始同步」第一眼
-        // 就看它有没有变成绿色的「运行中」,而原来它是瞬间换字,没有任何"它变了"的提示。
-        if (statusPill.text.toString() != pillText) {
-            statusPill.text = pillText
-            if (!reduceMotion) {
-                statusPill.scaleX = 0.9f
-                statusPill.scaleY = 0.9f
-                statusPill.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
-            }
-        }
-        statusPill.setTextColor(if (running || paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
-        headerDetail.text = when {
-            running -> "正在同步到 ${macIp.text}:${macPort.text}"
-            paired -> "已配对,点「开始同步」开始"
-            else -> "尚未连接 Mac"
-        }
-        toggle.text = if (running) "停止同步" else "开始同步"
+        applyStatusPill()
 
         syncState.text = when {
             running -> "同步已开启"
@@ -313,18 +311,7 @@ class MainActivity : AppCompatActivity() {
         //
         // 还没读到曲目时给**可操作**的下一步(去开权限 / 去选歌),不是干等 —— 空着一个破折号
         // 用户不知道是该等还是该做什么。
-        val (title, artist, playing) = RelayLog.nowPlaying(this)
-        if (running && title.isNotBlank()) {
-            setTextIfChanged(nowTitle, title)
-            setTextIfChanged(nowArtist, artist.ifBlank { "未知歌手" } + if (playing) " · 播放中" else " · 已暂停")
-        } else {
-            setTextIfChanged(nowTitle, "—")
-            setTextIfChanged(nowArtist, when {
-                !running -> "还没有开始同步"
-                !notifEnabled -> "等通知使用权开启后才能读到"
-                else -> "等待 QQ 音乐开始播放"
-            })
-        }
+        applyNowPlaying()
 
         pairState.text = if (paired) "已配对" else "尚未配对"
         pairState.setTextColor(if (paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
@@ -352,11 +339,73 @@ class MainActivity : AppCompatActivity() {
 
     private fun isPaired(): Boolean = !SecureTokenStore(this).load().isNullOrBlank()
 
+    /// 每秒那一拍走的轻量路径:只重算"会随时间变"的部分 —— 服务还活着吗、当前是哪首歌。
+    /// 全是读内存里的 SharedPreferences 加字符串比较,不碰 Keystore / 系统设置 / 文件。
+    /// 为什么可以省掉其余几项:它们只在用户去系统设置改过之后才变,而那件事发生时 onResume
+    /// 会重新跑一次完整刷新(见 uiTick 上方那段注释)。
+    private fun refreshLiveValues() {
+        val wasRunning = running
+        if (running && !RelayLog.isServiceAlive()) {
+            running = false
+            getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
+        }
+        // 状态翻面了(典型是服务刚被杀掉)就整页刷一次:那一刻连接信息、诊断文字都该跟着变。
+        // 这种事一秒最多发生一次,贵一次无所谓;而"服务还活着"这种稳态下就一直走便宜的那条。
+        if (wasRunning != running) { refreshUi(); return }
+        applyStatusPill()
+        applyNowPlaying()
+    }
+
+    /// 状态胶囊的文案与配色。抽出来是为了让两条刷新路径共用 —— 否则"每秒那条"和"完整那条"
+    /// 迟早各写一份,表现成同一个状态下两处显示不一致。
+    private fun applyStatusPill() {
+        val paired = lastKnownPaired
+        val pillText = when {
+            running -> "运行中"
+            paired -> "已配对"
+            else -> "未配对"
+        }
+        // 状态变化时轻微弹一下。这是整页最该被注意到的那个字 —— 用户点完「开始同步」第一眼
+        // 就看它有没有变成绿色的「运行中」,而原来它是瞬间换字,没有任何"它变了"的提示。
+        if (statusPill.text.toString() != pillText) {
+            statusPill.text = pillText
+            if (!reduceMotion) {
+                statusPill.scaleX = 0.9f
+                statusPill.scaleY = 0.9f
+                statusPill.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+            }
+        }
+        statusPill.setTextColor(if (running || paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
+        headerDetail.text = when {
+            running -> "正在同步到 ${macIp.text}:${macPort.text}"
+            paired -> "已配对,点「开始同步」开始"
+            else -> "尚未连接 Mac"
+        }
+        toggle.text = if (running) "停止同步" else "开始同步"
+    }
+
+    /// 当前曲目那两行。见 refreshUi 里那一段的注释。
+    private fun applyNowPlaying() {
+        val (title, artist, playing) = RelayLog.nowPlaying(this)
+        if (running && title.isNotBlank()) {
+            setTextIfChanged(nowTitle, title)
+            setTextIfChanged(nowArtist, artist.ifBlank { "未知歌手" } + if (playing) " · 播放中" else " · 已暂停")
+        } else {
+            setTextIfChanged(nowTitle, "—")
+            setTextIfChanged(nowArtist, when {
+                !running -> "还没有开始同步"
+                !lastKnownNotifEnabled -> "等通知使用权开启后才能读到"
+                else -> "等待 QQ 音乐开始播放"
+            })
+        }
+    }
+
     /// 只在值真变了时才写 TextView,并给一次轻微淡入。
     ///
-    /// refreshUi 每秒被调一次(见 onResume 起的定时器),无条件赋值会让每次都触发一次重绘、
-    /// 长标题还会反复走一遍省略号排版 —— 界面上表现为文字在微微抖。同时"变了"本身值得一个
-    /// 提示:曲目换了、状态翻了,淡一下比瞬间跳变更容易被注意到。
+    /// 每秒那一拍会调到这里(经 refreshLiveValues → applyStatusPill / applyNowPlaying),
+    /// 无条件赋值会让每次都触发一次重绘、长标题还会反复走一遍省略号排版 —— 界面上表现为
+    /// 文字在微微抖。同时"变了"本身值得一个提示:曲目换了、状态翻了,淡一下比瞬间跳更
+    /// 容易被注意到。
     private fun setTextIfChanged(view: TextView, value: String) {
         if (view.text.toString() == value) return
         view.text = value

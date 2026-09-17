@@ -118,6 +118,14 @@ class RelayService : Service() {
         discovery.stop()
         queue.close()
         wakeLock?.let { if (it.isHeld) it.release() }
+        // 曲目状态也要清(2026-09-17 审查发现)。原来只有 MainActivity.stopRelay() 那条
+        // **用户主动停止**的路径会清,而服务被系统回收(低内存、厂商 ROM 清理、用户在上游把
+        // 它划掉)走的是这条 onDestroy —— 那条路不清的话,下次打开界面会看到上一次播的那首歌
+        // 停在那里,读起来像"还在同步",而实际上服务早就没了。
+        //
+        // 判据看心跳而不是 running 布尔:running 在那个场景下仍是 true(没人改过它),
+        // 而心跳会随进程一起停 —— 这正是两个信号的区别所在。
+        RelayLog.clearNowPlaying(this)
         getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         super.onDestroy()
     }

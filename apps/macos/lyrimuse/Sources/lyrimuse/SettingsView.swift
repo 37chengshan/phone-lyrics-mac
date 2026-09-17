@@ -2972,16 +2972,24 @@ private struct PhoneSettingsTab: View {
                 // 当前曲目(2026-09-17 加)。手机端有、Mac 端也该有:这是"整条链路真的通了"
                 // 最直接的证据 —— 标题出现在这里,说明事件到达、校验通过、歌词管线接手了。
                 // 原来这一页只有连接状态,用户看不出"它到底在同步什么"。
+                //
+                // ⚠️ 判据是**连接状态**,不是"标题空不空"。手机掉线时播放快照会被清掉,但 title
+                // 按既有约定保留(跟"暂停"一样留着最近一首的信息,见 LocalPlaybackSource.poll 里
+                // 那条注释)。只看 title 的话,断线之后这一行会继续显示上一首歌配一个"已暂停",
+                // 读起来像是手机还连着、只是停了 —— 而它其实已经离线,那是两种完全不同的故障。
                 SettingsRow(
                     icon: "music.note",
-                    title: playback.title.isEmpty ? L10n.t("等待手机播放") : playback.title,
-                    subtitle: playback.title.isEmpty
-                        ? L10n.t("在手机上用 QQ 音乐放一首歌")
-                        : [playback.artist, playback.isPlayingNow ? L10n.t("播放中") : L10n.t("已暂停")]
-                            .filter { !$0.isEmpty }.joined(separator: " · "),
+                    title: isPhoneLive && !playback.title.isEmpty ? playback.title : L10n.t("等待手机播放"),
+                    subtitle: isPhoneLive && !playback.title.isEmpty
+                        ? [playback.artist, playback.isPlayingNow ? L10n.t("播放中") : L10n.t("已暂停")]
+                            .filter { !$0.isEmpty }.joined(separator: " · ")
+                        : emptyTrackHint,
                     // help 放歌词状态:标题行空间有限,而"有没有解析出歌词"是排查时第二个要看的
-                    help: playback.title.isEmpty ? nil : (playback.hasLyricsContent
-                        ? L10n.t("已解析出歌词") : L10n.t("这首歌还没有歌词，可到「歌词」页手动搜索"))
+                    help: isPhoneLive && !playback.title.isEmpty
+                        ? (playback.hasLyricsContent
+                            ? L10n.t("已解析出歌词")
+                            : L10n.t("这首歌还没有歌词，可到「歌词」页手动搜索"))
+                        : nil
                 ) { EmptyView() }
             }
 
@@ -3055,6 +3063,22 @@ private struct PhoneSettingsTab: View {
         .onAppear { heartbeatStatus = service.connectionStatus }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             heartbeatStatus = service.connectionStatus
+        }
+    }
+
+    /// 手机此刻是不是真的活着(有连接、没掉线)。见当前曲目那一行的注释。
+    private var isPhoneLive: Bool {
+        heartbeatStatus == .connected || heartbeatStatus == .unstable
+    }
+
+    /// 没在播时的副标题:按连接状态说清"现在是什么情况、下一步做什么"。
+    /// 一句"等待手机播放"盖住全部情况是不够的 —— 手机离线跟还没开始播是两回事,
+    /// 前者用户得去检查手机/网络,后者只需要去按播放键。
+    private var emptyTrackHint: String {
+        switch heartbeatStatus {
+        case .offline: return L10n.t("手机已离线。检查手机上的中继是否还在运行")
+        case .unstable: return L10n.t("连接不稳定，正在等待恢复")
+        case .waiting, .connected: return L10n.t("在手机上用 QQ 音乐放一首歌")
         }
     }
 

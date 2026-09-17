@@ -628,6 +628,7 @@
 "手动重新匹配" = "Manual re-match";
 "手机 QQ 音乐" = "QQ Music on Phone";
 "手机已离线" = "Phone Offline";
+"手机已离线。检查手机上的中继是否还在运行" = "Phone is offline — check that the relay is still running on it";
 "手机已连接" = "Phone Connected";
 "手机是唯一播放源；Mac 只同步显示，不会控制手机。" = "Your phone is the only playback source. This Mac mirrors it and never controls it.";
 "手机连接" = "Phone Connection";
@@ -1342,6 +1343,7 @@
 "连接 Last.fm 账号" = "Connect Last.fm Account";
 "连接 Last.fm…" = "Connect Last.fm…";
 "连接不稳定" = "Unstable Connection";
+"连接不稳定，正在等待恢复" = "Connection unstable — waiting to recover";
 "连接信息" = "Connection Info";
 "连接后这里会展示你的听歌档案" = "Once connected, your listening profile shows up here";
 "连接失败或超时，没有拿到任何响应" = "Connection failed or timed out with no response";
