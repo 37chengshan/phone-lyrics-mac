@@ -1,0 +1,55 @@
+// Command collector watches the macOS system now-playing state via
+// AppleScript and submits playing_now / listen events to ListenBrainz.
+package main
+
+import (
+	"bytes"
+	"context"
+	_ "image/jpeg" // 注册 JPEG 解码器
+	_ "image/png"  // 网易云取色缩略图有时是 PNG(content-type 却谎报 jpg)
+	"log"
+	"net/http"
+	"time"
+)
+
+// alerter 推送一条通知。platform 决定 push() 怎么拼 body/URL——见 notify.go 的
+// buildNotifyPayload/dingtalkSignedURL/feishuSign。这里不再有故障告警(连续失败 N
+// 次才推、恢复时再推一次)的 ok()/fail() 逻辑,该能力已整体下线;weeklyDigestPush
+// 仍复用这个类型的 push()。
+type alerter struct {
+	platform       string
+	url            string
+	dingtalkSecret string
+	feishuSecret   string
+}
+
+func newAlerter(platform, url, dingtalkSecret, feishuSecret string) *alerter {
+	return &alerter{
+		platform: platform, url: url,
+		dingtalkSecret: dingtalkSecret, feishuSecret: feishuSecret,
+	}
+}
+
+func (a *alerter) push(title, body string) {
+	payload, contentType, err := buildNotifyPayload(a.platform, title, body, a.feishuSecret)
+	if err != nil {
+		return
+	}
+	target := a.url
+	if a.platform == platformDingtalk {
+		target = dingtalkSignedURL(a.url, a.dingtalkSecret)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err := doHTTPTracked(http.DefaultClient, req)
+	if err != nil {
+		log.Printf("notify push failed (platform=%s): %v", a.platform, err)
+		return
+	}
+	resp.Body.Close()
+}
