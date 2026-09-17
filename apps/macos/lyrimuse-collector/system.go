@@ -238,6 +238,15 @@ const (
 	kugouMusicBundleID   = "com.kugou.mac.Music"
 )
 
+// qqMusicAndroidBundleID 是**手机端** QQ 音乐的包名,跟上面那个 Mac 版不是同一个字符串。
+//
+// 这个 fork 的唯一播放源就是手机上的 QQ 音乐(见 system.go 的 getState 头注),而快照里的
+// bundleIdentifier 是接收端从 Android 事件里原样带过来的(见 PhonePlaybackBridge.makeMediaSnapshot),
+// 也就是说这里每天都会收到这个值。它必须出现在 isKnownPlayerBundleID 里,否则 isTracked()
+// 会把每一拍都判成"不是我关心的来源" —— 表现是 Mac 上永远不解析歌词,而网络、配对、心跳
+// 全都正常,排查时完全没有线索。
+const qqMusicAndroidBundleID = "com.tencent.qqmusic"
+
 // playerBundleID 把一个具体播放器常量(playerQQMusic 等,不接受 playerAuto——它没有
 // 唯一固定的目标,调用方必须先排除这个 case,见 isTracked()/getMultiSelectedState 的
 // 注释)映射成它自己会报告的 bundle id。2026-09-01 从单选年代的 expectedPlayerBundleID
@@ -304,9 +313,13 @@ func isAdBreak(bundleID, artist, title, album string) bool {
 // isKnownPlayerBundleID 是"自动识别"模式专用的成员判断——playerAuto 下 isTracked()
 // 用它替代 expectedPlayerBundleID() 那种"只认一个固定 bundle id"的判断,因为自动识别
 // 模式下 p.cur.Bundle 可能是这五个已知播放器里的任意一个。
+//
+// 手机端 QQ 音乐(qqMusicAndroidBundleID)也算"已知" —— 它是这个 fork 里**唯一**会出现的
+// 来源,不认它等于整个歌词链路静默失效,理由见那个常量的注释。
 func isKnownPlayerBundleID(bundleID string) bool {
 	switch bundleID {
-	case "com.apple.Music", qqMusicBundleID, neteaseMusicBundleID, spotifyBundleID, kugouMusicBundleID:
+	case "com.apple.Music", qqMusicBundleID, qqMusicAndroidBundleID,
+		neteaseMusicBundleID, spotifyBundleID, kugouMusicBundleID:
 		return true
 	default:
 		return false
@@ -418,6 +431,10 @@ const mediaPlayerLabelIPhone = "Apple Music (iOS)"
 // 用户显式信任的未知播放器**(不是只有内置那几个,default 分支不是死代码)。
 func mediaPlayerLabel(bundleID string) string {
 	switch bundleID {
+	// 手机端 QQ 音乐(这个 fork 的唯一来源)报成它自己,不能落到下面的兜底 —— 否则
+	// ListenBrainz / Last.fm 上的来源统计会把每一次收听都写成别的播放器。
+	case qqMusicAndroidBundleID:
+		return "QQ Music (Android)"
 	case qqMusicBundleID:
 		return "QQ Music (macOS)"
 	case neteaseMusicBundleID:

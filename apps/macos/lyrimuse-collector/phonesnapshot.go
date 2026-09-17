@@ -13,13 +13,19 @@ const phoneSnapshotMaxAge = 8 * time.Second
 // session after connectivity was lost.
 func readPhoneState(path string, now time.Time) (map[string]any, bool) {
 	data, err := os.ReadFile(path)
-	if err != nil { return nil, false }
+	if err != nil {
+		return nil, false
+	}
 	var state map[string]any
-	if err := json.Unmarshal(data, &state); err != nil { return nil, false }
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil, false
+	}
 	title, titleOK := state["title"].(string)
 	_, artistOK := state["artist"].(string)
 	stamp, stampOK := state["timestamp"].(string)
-	if !titleOK || !artistOK || title == "" || !stampOK { return nil, false }
+	if !titleOK || !artistOK || title == "" || !stampOK {
+		return nil, false
+	}
 	when, err := time.Parse(time.RFC3339Nano, stamp)
 	if err != nil || now.Sub(when) > phoneSnapshotMaxAge || when.Sub(now) > time.Second {
 		return nil, false
