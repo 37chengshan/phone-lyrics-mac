@@ -1,178 +1,486 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+  2026-09-17 重做。原版是**一屏堆到底**的 LinearLayout:发现、地址、配对码、配对按钮、
+  测试按钮、权限按钮、状态文字全挤在一条滚动里,层次全靠间距区分 —— 用户实测反馈
+  「整个用户逻辑混乱」「要分页」。现在改成三段式:头部常驻状态,下面三个页签
+  (状态 / 连接 / 权限),同一时刻只显示一页。
+
+  另一个必须处理的事:targetSdk 35 在 Android 15 上强制 edge-to-edge,内容会**画到系统
+  状态栏底下** —— 深色主题配深色状态栏,顶部那几行字正好糊在一起(用户实测「UI 被上边栏
+  挡住」)。这份布局不再指望主题里的 fitsSystemWindows,而是由 MainActivity 用
+  WindowInsets 给根布局加 padding,那样刘海/挖孔/手势条三种机型都能正确让位。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0B0D11"
-    android:fillViewport="true">
+    android:orientation="vertical">
 
+    <!-- 头部:永远看得见的那一层"我现在是什么状态"。 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="20dp">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:letterSpacing="-0.02"
-            android:text="歌词中继"
-            android:textColor="#EEF1F5"
-            android:textSize="22sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:layout_marginBottom="18dp"
-            android:text="读取正在播放，推送到 Mac 悬浮歌词"
-            android:textColor="#8B93A1"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/statusPill"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/pill_bg"
-            android:paddingLeft="10dp"
-            android:paddingTop="5dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="5dp"
-            android:text="未启动"
-            android:textColor="#FF7B72"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+        android:paddingStart="20dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="20dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            android:background="@drawable/panel_bg"
-            android:orientation="vertical"
-            android:padding="14dp">
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:text="Mac 连接"
-                android:textColor="#8B93A1"
-                android:textSize="12sp" />
+                android:layout_weight="1"
+                android:text="歌词中继"
+                android:textColor="#EEF1F5"
+                android:textSize="21sp"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/discoveryStatus"
-                android:layout_width="match_parent"
+                android:id="@+id/statusPill"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="正在自动发现同一 Wi-Fi 下的 Mac…"
-                android:textColor="#7AA2FF"
-                android:textSize="13sp" />
-
-            <EditText
-                android:id="@+id/macIp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/input_bg"
-                android:hint="例如 172.20.10.2"
-                android:inputType="textUri"
-                android:padding="12dp"
-                android:textColor="#EEF1F5"
-                android:textColorHint="#5C6470"
-                android:textSize="15sp" />
-
-            <EditText
-                android:id="@+id/macPort"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/input_bg"
-                android:hint="端口"
-                android:inputType="number"
-                android:padding="12dp"
-                android:text="8765"
-                android:textColor="#EEF1F5"
-                android:textColorHint="#5C6470"
-                android:textSize="15sp" />
-
-            <EditText
-                android:id="@+id/pairingCode"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/input_bg"
-                android:hint="Mac 上显示的 6 位配对码"
-                android:inputType="number"
-                android:maxLength="6"
-                android:padding="12dp"
-                android:textColor="#EEF1F5"
-                android:textColorHint="#5C6470"
-                android:textSize="15sp" />
-
-            <Button
-                android:id="@+id/btnPair"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/btn_primary"
-                android:text="配对并保存"
-                android:textColor="#0B0D11" />
-
-            <Button
-                android:id="@+id/btnTest"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/btn_ghost"
-                android:text="测试连接"
-                android:textColor="#EEF1F5" />
+                android:background="@drawable/pill_bg"
+                android:paddingStart="11dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="11dp"
+                android:paddingBottom="6dp"
+                android:text="未启动"
+                android:textColor="#FF7B72"
+                android:textSize="12sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/toggle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/btn_primary"
-            android:padding="14dp"
-            android:text="启动中继"
-            android:textColor="#0B0D11"
-            android:textSize="15sp"
-            android:textStyle="bold" />
-
         <TextView
+            android:id="@+id/headerDetail"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:layout_marginBottom="8dp"
-            android:text="权限与保活"
-            android:textColor="#8B93A1"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/btnNotifAccess"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@drawable/btn_ghost"
-            android:text="1. 开启通知使用权"
-            android:textColor="#EEF1F5" />
-
-        <Button
-            android:id="@+id/btnBattery"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/btn_ghost"
-            android:text="2. 关闭电池优化（保活）"
-            android:textColor="#EEF1F5" />
-
-        <TextView
-            android:id="@+id/detail"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:lineSpacingExtra="3dp"
-            android:text="未启动"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="尚未连接 Mac"
             android:textColor="#8B93A1"
             android:textSize="12sp" />
     </LinearLayout>
-</ScrollView>
+
+    <!-- 页签。用三个 Button 自己画,不引 TabLayout —— 这一页的选择很少,自己画能完全
+         控制选中态和切换动画,少一个要跟着升级的依赖。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp">
+
+        <TextView
+            android:id="@+id/tabStatus"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/tab_bg"
+            android:gravity="center"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp"
+            android:text="状态"
+            android:textColor="#EEF1F5"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tabConnect"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/tab_bg"
+            android:gravity="center"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp"
+            android:text="连接"
+            android:textColor="#8B93A1"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/tabPerms"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:background="@drawable/tab_bg"
+            android:gravity="center"
+            android:paddingTop="9dp"
+            android:paddingBottom="9dp"
+            android:text="权限"
+            android:textColor="#8B93A1"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="12dp">
+
+        <!-- ============ 页 1:状态 ============ -->
+        <ScrollView
+            android:id="@+id/pageStatus"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/syncState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="同步未启动"
+                        android:textColor="#EEF1F5"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/syncHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="5dp"
+                        android:lineSpacingExtra="2dp"
+                        android:text="点下面的按钮开始同步"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="当前曲目"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/nowTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="—"
+                        android:textColor="#EEF1F5"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/nowArtist"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="还没有读到 QQ 音乐"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/toggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:background="@drawable/btn_primary"
+                    android:paddingTop="14dp"
+                    android:paddingBottom="14dp"
+                    android:text="开始同步"
+                    android:textColor="#0B0D11"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/statusLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:lineSpacingExtra="3dp"
+                    android:textColor="#8B93A1"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ============ 页 2:连接 ============ -->
+        <ScrollView
+            android:id="@+id/pageConnect"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Mac 地址"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/discoveryStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:lineSpacingExtra="2dp"
+                        android:text="正在自动发现同一 Wi-Fi 下的 Mac…"
+                        android:textColor="#7AA2FF"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/macIp"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/input_bg"
+                        android:hint="例如 10.24.95.92"
+                        android:inputType="textUri"
+                        android:padding="12dp"
+                        android:textColor="#EEF1F5"
+                        android:textColorHint="#5C6470"
+                        android:textSize="15sp" />
+
+                    <EditText
+                        android:id="@+id/macPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/input_bg"
+                        android:hint="端口"
+                        android:inputType="number"
+                        android:padding="12dp"
+                        android:text="8765"
+                        android:textColor="#EEF1F5"
+                        android:textColorHint="#5C6470"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/btnTest"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/btn_ghost"
+                        android:text="测试连接"
+                        android:textColor="#EEF1F5" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="配对"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/pairState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:text="尚未配对"
+                        android:textColor="#FF7B72"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <EditText
+                        android:id="@+id/pairingCode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/input_bg"
+                        android:hint="Mac 上显示的 6 位配对码"
+                        android:inputType="number"
+                        android:maxLength="6"
+                        android:padding="12dp"
+                        android:textColor="#EEF1F5"
+                        android:textColorHint="#5C6470"
+                        android:textSize="15sp" />
+
+                    <Button
+                        android:id="@+id/btnPair"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/btn_primary"
+                        android:text="配对并保存"
+                        android:textColor="#0B0D11" />
+
+                    <TextView
+                        android:id="@+id/pairResult"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="9dp"
+                        android:lineSpacingExtra="2dp"
+                        android:visibility="gone"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ============ 页 3:权限 ============ -->
+        <ScrollView
+            android:id="@+id/pagePerms"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/permNotifState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="通知使用权:未开启"
+                        android:textColor="#FF7B72"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="没有它读不到 QQ 音乐在放什么"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnNotifAccess"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/btn_ghost"
+                        android:text="去开启"
+                        android:textColor="#EEF1F5" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:id="@+id/permBatteryState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="电池优化:未关闭"
+                        android:textColor="#FF7B72"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="不关的话后台跑一会儿会被系统杀掉"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnBattery"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:background="@drawable/btn_ghost"
+                        android:text="去关闭"
+                        android:textColor="#EEF1F5" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="诊断"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/diagText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="7dp"
+                        android:lineSpacingExtra="3dp"
+                        android:textIsSelectable="true"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+</LinearLayout>
+

@@ -8,6 +8,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- ⚠️ 少了这一条,点「开始同步」必定闪退:RelayService.onCreate 里用
+         PowerManager.newWakeLock 拿了 PARTIAL_WAKE_LOCK 并 acquire(),而 acquire 在没有
+         WAKE_LOCK 权限时抛 SecurityException —— 异常发生在 onCreate、没人接,整个进程当场
+         死。表现是"点一下按钮 App 就没了",而且**服务从来没起来过**,所以 Mac 那边一条
+         数据都收不到(配对本身是 Activity 里的事,所以会显示配对成功,更误导)。 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"

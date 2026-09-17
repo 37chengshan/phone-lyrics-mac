@@ -32,6 +32,9 @@ class RelayService : Service() {
 
     private val heartbeat = object : Runnable {
         override fun run() {
+            // 心跳有两个用途:给 Activity 判断"服务到底还在不在"(见 RelayLog.isServiceAlive),
+            // 以及让采集在没歌时也定期重扫一次会话。
+            RelayLog.heartbeat(this@RelayService)
             capture.currentSnapshot()?.let(::publish) ?: capture.refresh()
             handler.postDelayed(this, HEARTBEAT_MS)
         }
@@ -41,6 +44,10 @@ class RelayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // 服务可能先于 Activity 被系统拉起(sticky 重启),那时通知渠道还不存在 ——
+        // startForeground 会因为渠道缺失直接抛异常。渠道创建放在这里才是安全的。
+        createChannelIfNeeded()
+        RelayLog.install(this)
         val prefs = getSharedPreferences("relay", MODE_PRIVATE)
         val deviceId = prefs.getString("deviceId", null) ?: Settings.Secure.getString(
             contentResolver, Settings.Secure.ANDROID_ID).orEmpty().ifBlank { UUID.randomUUID().toString() }
@@ -61,7 +68,12 @@ class RelayService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PhoneLyrics:relay").apply {
             setReferenceCounted(false)
-            acquire(12 * 60 * 60 * 1000L)
+            // ⚠️ 这里**必须**容错。2026-09-17 真机实测:manifest 少一条 WAKE_LOCK 时,
+            // acquire() 抛 SecurityException,而它发生在 onCreate 里、没有任何人接 —— 整个
+            // 进程当场死掉,表现是"点开始同步 App 就没了"。manifest 已经补上那个权限,但
+            // 这道兜底仍然要留:唤醒锁只是**优化**(让 CPU 在锁屏时别睡太死),拿不到就不拿,
+            // 服务照常跑 —— 总比为了一个可选优化把整个同步功能带走强。
+            runCatching { acquire(12 * 60 * 60 * 1000L) }
         }
     }
 
@@ -71,15 +83,32 @@ class RelayService : Service() {
         intent?.getIntExtra(EXTRA_PORT, -1)?.takeIf { it in 1..65535 }?.let { api.port = it }
         api.token = SecureTokenStore(this).load().orEmpty()
         if (api.host.isBlank() || api.token.isBlank()) {
+            RelayLog.note("service start aborted: host=${api.host.ifBlank { "(空)" }} " +
+                "token=${if (api.token.isBlank()) "(空)" else "有"}")
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIF_ID, notification("等待 QQ 音乐…"))
-        try { capture.start() } catch (_: SecurityException) { updateNotification("请先开启通知使用权") }
+        // startForeground 本身也可能抛(通知权限被撤销、渠道被用户关掉),接住它 ——
+        // 否则又是一个"点了就闪退"。
+        try {
+            startForeground(NOTIF_ID, notification("等待 QQ 音乐…"))
+        } catch (error: Exception) {
+            RelayLog.note("startForeground FAILED: ${error.javaClass.simpleName}: ${error.message}")
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            capture.start()
+            RelayLog.note("capture started")
+        } catch (error: SecurityException) {
+            RelayLog.note("capture needs notification access")
+            updateNotification("请先开启通知使用权")
+        }
         discovery.start()
         handler.removeCallbacks(heartbeat)
         handler.post(heartbeat)
         prefs.edit().putString("ip", api.host).putInt("port", api.port).putBoolean("running", true).apply()
+        RelayLog.note("relay running -> ${api.host}:${api.port}")
         return START_STICKY
     }
 
@@ -112,5 +141,13 @@ class RelayService : Service() {
 
     private fun updateNotification(text: String) {
         getSystemService(android.app.NotificationManager::class.java).notify(NOTIF_ID, notification(text))
+    }
+
+    private fun createChannelIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(
+                android.app.NotificationChannel("relay", "手机歌词同步",
+                    android.app.NotificationManager.IMPORTANCE_LOW))
+        }
     }
 }

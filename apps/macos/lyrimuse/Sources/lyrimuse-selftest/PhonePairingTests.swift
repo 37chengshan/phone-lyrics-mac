@@ -44,4 +44,41 @@ func runPhonePairingTests() {
         } catch {}
     }
     expectEqual(rateLimited, true, "手机配对: 同 peer 每分钟最多五次失败")
+
+    // ---- 手动地址过滤(2026-09-17 真机排查) ----
+    //
+    // 设置页「手动连接备用地址」原来把所有非回环 IPv4 都列出来,于是代理软件插进来的
+    // 隧道网卡(实测 utun5 / 198.18.0.1)也跟着显示。用户挑到那个地址,表现成「配对能成功
+    // 但同步永远不通」——而屏幕上两条地址并排,看不出哪条是错的。
+    //
+    // 规则本体是 LyrimuseCore 的纯函数(见 PhoneAddressFilter 头注),这里直接喂样本:
+    // 断言的是规则,不是「这台机器现在的网卡长什么样」,换机器跑结果一样。
+    do {
+        // 真机那台机器的实际形态:en0 是默认路由,utun5 是代理插进来的隧道。
+        expectEqual(
+            PhoneAddressFilter.visible([
+                (interface: "en0", address: "10.24.95.92:8765"),
+                (interface: "utun5", address: "198.18.0.1:8765"),
+            ], primaryInterface: "en0"),
+            ["10.24.95.92:8765"],
+            "手动地址: 只列真实网卡,隧道地址不出现(列两条会让人挑错,真机踩过)")
+
+        // 隧道一律不出现,哪怕它是唯一带 IPv4 的那块。
+        expectEqual(
+            PhoneAddressFilter.visible(
+                [(interface: "utun5", address: "198.18.0.1:8765")], primaryInterface: nil),
+            [],
+            "手动地址: 隧道地址永远不进列表")
+
+        // 认不出默认路由那块时(全走 VPN 的极端情况),用真实网卡的其它地址兜底 ——
+        // 宁可给个可疑的,也不要让用户一个能填的都没有。
+        expectEqual(
+            PhoneAddressFilter.visible(
+                [(interface: "en1", address: "192.168.1.5:8765")], primaryInterface: nil),
+            ["192.168.1.5:8765"],
+            "手动地址: 认不出主网卡时用真实网卡地址兜底")
+
+        expectEqual(PhoneAddressFilter.isTunnelInterface("utun5"), true, "手动地址: utun5 算隧道")
+        expectEqual(PhoneAddressFilter.isTunnelInterface("en0"), false, "手动地址: en0 不算隧道")
+    }
 }
