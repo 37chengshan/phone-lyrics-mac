@@ -2,14 +2,23 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>歌词</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div id="root" class="root locked">
-      <div id="current" class="line current">等待手机</div>
-      <div id="next" class="line next"></div>
+    <div id="root" class="root">
+      <div id="chrome" class="chrome">
+        <button id="btn-drag" class="chip" title="按住拖动" type="button">拖动</button>
+        <button id="btn-resize" class="chip" title="拖右下角缩放" type="button">缩放</button>
+        <button id="btn-lock" class="chip" type="button">锁定</button>
+        <button id="btn-settings" class="chip" type="button">设置</button>
+        <button id="btn-close" class="chip danger" type="button">关闭</button>
+      </div>
+      <div class="lyrics">
+        <div id="current" class="line current">等待手机</div>
+        <div id="next" class="line next"></div>
+      </div>
+      <div id="status" class="status"></div>
     </div>
     <script src="renderer.js"></script>
   </body>

@@ -1,77 +1,75 @@
-const el = (id) => document.getElementById(id);
-
-const badge = el('conn-badge');
-const connMeta = el('conn-meta');
-const ips = el('ips');
-const port = el('port');
-const font = el('font');
-const fontVal = el('font-val');
-const rows1 = el('rows1');
-const rows2 = el('rows2');
-const lock = el('lock');
-const opacity = el('opacity');
-const opVal = el('op-val');
-const demo = el('demo');
-const lyricSrc = el('lyric-src');
+const $ = (id) => document.getElementById(id);
 
 function applyState(state) {
   if (!state) return;
-  const on = state.connected || state.demo;
-  badge.textContent = on ? (state.demo ? '演示中' : '在线') : '离线';
-  badge.className = `badge ${on ? 'on' : 'off'}`;
+  const online = state.connected || state.demo;
+  const pill = $('conn');
+  pill.textContent = online ? (state.demo ? '演示' : '在线') : '离线';
+  pill.className = `pill ${online ? 'on' : 'off'}`;
 
-  if (state.nowPlaying) {
-    connMeta.textContent = `${state.nowPlaying.title} — ${state.nowPlaying.artist || '未知歌手'} · ${state.nowPlaying.state}`;
-  } else if (state.demo) {
-    connMeta.textContent = '演示模式：使用内置示例歌词';
-  } else {
-    connMeta.textContent = '等待手机 POST /api/now-playing';
-  }
+  $('song').textContent = state.nowPlaying
+    ? `${state.nowPlaying.artist || ''} ${state.nowPlaying.artist ? '· ' : ''}${state.nowPlaying.title}`
+    : state.demo
+      ? '演示模式'
+      : '等待手机推送';
 
-  ips.innerHTML = (state.addresses || [])
-    .map((ip) => `http://${ip}:${state.port}/api/now-playing`)
-    .join('<br/>') || '未检测到非环回 IPv4';
+  const addr =
+    (state.addresses && state.addresses[0]) || '127.0.0.1';
+  $('endpoint').textContent = `http://${addr}:${state.port}/api/now-playing`;
 
   const s = state.settings;
-  if (document.activeElement !== port) port.value = s.port;
-  font.value = s.fontSize;
-  fontVal.textContent = s.fontSize;
-  rows1.classList.toggle('active', s.rows === 1);
-  rows2.classList.toggle('active', s.rows === 2);
-  lock.checked = !!s.locked;
-  opacity.value = Math.round(s.opacity * 100);
-  opVal.textContent = Math.round(s.opacity * 100);
-  demo.checked = !!s.demo;
-  lyricSrc.textContent = state.lyricSource ? `歌词源: ${state.lyricSource}` : '';
+  if (document.activeElement !== $('port')) $('port').value = s.port;
+  $('font').value = s.fontSize;
+  $('font-val').textContent = s.fontSize;
+  $('rows1').classList.toggle('active', s.rows === 1);
+  $('rows2').classList.toggle('active', s.rows === 2);
+  $('lock').checked = !!s.locked;
+  $('opacity').value = Math.round(s.opacity * 100);
+  $('op-val').textContent = Math.round(s.opacity * 100);
+  $('demo').checked = !!s.demo;
+  $('lyric-src').textContent = [
+    state.lyricSource ? `歌词源 ${state.lyricSource}` : '',
+    state.lyricError ? `· ${state.lyricError}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 async function push(partial) {
   if (!window.phoneLyrics) return;
-  const next = await window.phoneLyrics.setSettings(partial);
-  applyState(next);
+  applyState(await window.phoneLyrics.setSettings(partial));
 }
 
-font.addEventListener('input', () => {
-  fontVal.textContent = font.value;
-  push({ fontSize: Number(font.value) });
+$('font').addEventListener('input', (e) => {
+  $('font-val').textContent = e.target.value;
+  push({ fontSize: Number(e.target.value) });
 });
-opacity.addEventListener('input', () => {
-  opVal.textContent = opacity.value;
-  push({ opacity: Number(opacity.value) / 100 });
+$('opacity').addEventListener('input', (e) => {
+  $('op-val').textContent = e.target.value;
+  push({ opacity: Number(e.target.value) / 100 });
 });
-lock.addEventListener('change', () => push({ locked: lock.checked }));
-demo.addEventListener('change', () => push({ demo: demo.checked }));
-rows1.addEventListener('click', () => push({ rows: 1 }));
-rows2.addEventListener('click', () => push({ rows: 2 }));
-el('btn-restart').addEventListener('click', async () => {
-  const result = await window.phoneLyrics.restartServer(Number(port.value));
-  if (!result.ok) connMeta.textContent = `端口失败: ${result.error}`;
+$('lock').addEventListener('change', (e) => push({ locked: e.target.checked }));
+$('demo').addEventListener('change', (e) => push({ demo: e.target.checked }));
+$('rows1').addEventListener('click', () => push({ rows: 1 }));
+$('rows2').addEventListener('click', () => push({ rows: 2 }));
+$('restart').addEventListener('click', async () => {
+  const result = await window.phoneLyrics.restartServer(Number($('port').value));
+  if (!result.ok) $('lyric-src').textContent = result.error || '端口启动失败';
 });
-el('btn-hide').addEventListener('click', () => window.phoneLyrics.hideOverlay());
+$('show-overlay').addEventListener('click', () => window.phoneLyrics.showOverlay());
+$('hide-overlay').addEventListener('click', () => window.phoneLyrics.hideOverlay());
+$('open-log').addEventListener('click', () => window.phoneLyrics.openLog());
+$('copy-ip').addEventListener('click', async () => {
+  const text = $('endpoint').textContent;
+  try {
+    await navigator.clipboard.writeText(text);
+    $('lyric-src').textContent = '已复制推送地址';
+  } catch {
+    $('lyric-src').textContent = text;
+  }
+});
 
 if (window.phoneLyrics) {
   window.phoneLyrics.onState(applyState);
   window.phoneLyrics.getState().then(applyState);
-} else {
-  connMeta.textContent = '浏览器预览模式（请打开 index.html 使用演示）';
 }

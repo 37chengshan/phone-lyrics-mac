@@ -1,4 +1,6 @@
 const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
 const {
   app,
   BrowserWindow,
@@ -8,64 +10,92 @@ const {
   screen,
   nativeImage,
   Notification,
+  shell,
 } = require('electron');
 const { StatusServer } = require('./server');
-const { LyricsService, DEMO_LRC } = require('./lyrics-service');
+const { LyricsService } = require('./lyrics-service');
 const { parseLRC, locateLine } = require('../shared/lrc');
 
 const DEFAULTS = {
   port: 8765,
-  fontSize: 28,
-  rows: 1,
+  fontSize: 30,
+  rows: 2,
   locked: false,
-  opacity: 0.92,
+  opacity: 0.95,
   demo: false,
   showOverlay: true,
 };
+
+const LOG_PATH = path.join(app.getPath('userData'), 'phone-lyrics.log');
+function log(...args) {
+  const line = `[${new Date().toISOString()}] ${args.map(String).join(' ')}\n`;
+  try {
+    fs.appendFileSync(LOG_PATH, line);
+  } catch {}
+}
+
+/** 16x16 template-ish music note PNG */
+const TRAY_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAhklEQVQ4y2NgGAWDHjAyMPxnYGD4z8jA8J+RgeE/IwPDf0YGBob/jAwM/xkZGP4zMjD8Z2Rg+M/IwPCfkYHhPyMDw39GBob/jAwM/xkZGP4zMjD8Z2Rg+M/IwPCfkYHhPyMDw39GBob/jAwM/xkZGP4zMjD8Z2Rg+M/IwPCfkYHhPyMDAwMDAwMDAwMDAwMDw38AAH0Q8xU3J7cAAAAASUVORK5CYII=';
 
 let tray = null;
 let overlayWin = null;
 let settingsWin = null;
 let server = null;
-let lyricsService = new LyricsService();
+const lyricsService = new LyricsService();
+const DEMO_LRC = `[00:00.00]演示：手机歌词镜像已就绪
+[00:03.50]悬浮窗可拖动 · 可缩放 · 可锁定
+[00:07.00]托盘 ♪ 可随时开关与设置
+[00:11.00]手机中继推送到本机 :8765
+[00:15.50]— demo —
+[00:20.00]— 循环播放 —
+`;
 
 let settings = { ...DEFAULTS };
 let nowPlaying = null;
 let lyricLines = [];
 let lyricSource = null;
 let lyricKey = null;
+let lyricError = null;
 let anchor = { positionMs: 0, wall: 0 };
 let demoStartWall = Date.now();
 let ticker = null;
 let connected = false;
+let lyricsFetchSeq = 0;
 
-function iconImage() {
-  // 16x16 black lyric note-ish square; macOS template
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-    <text x="8" y="12" text-anchor="middle" font-size="12">♪</text>
-  </svg>`;
-  return nativeImage.createFromBuffer(Buffer.from(svg)).resize({ width: 16, height: 16 });
+function trayImage() {
+  return nativeImage
+    .createFromBuffer(Buffer.from(TRAY_PNG, 'base64'))
+    .resize({ width: 16, height: 16 });
 }
 
 function computePositionMs() {
   if (settings.demo) {
-    const elapsed = Date.now() - demoStartWall;
-    const last = lyricLines[lyricLines.length - 1]?.timeMs || 40000;
-    return elapsed % (last + 4000);
+    const last = lyricLines[lyricLines.length - 1]?.timeMs || 25000;
+    return (Date.now() - demoStartWall) % (last + 3000);
   }
   if (!nowPlaying) return 0;
   if (nowPlaying.state === 'playing') {
-    return anchor.positionMs + (Date.now() - anchor.wall);
+    return Math.max(0, anchor.positionMs + (Date.now() - anchor.wall));
   }
-  return anchor.positionMs;
+  return Math.max(0, anchor.positionMs);
 }
 
 function snapshotState() {
   const pos = computePositionMs();
   const loc = locateLine(lyricLines, pos);
+  const online = settings.demo || connected;
+  let currentText = '等待手机';
+  if (settings.demo) currentText = loc.current?.text ?? '演示中';
+  else if (online) {
+    currentText = loc.current?.text ?? (nowPlaying ? nowPlaying.title : '等待手机');
+  } else if (nowPlaying) {
+    currentText = '等待手机';
+  }
+
   return {
-    settings,
-    connected: settings.demo ? true : connected,
+    settings: { ...settings },
+    connected: online,
     demo: settings.demo,
     addresses: server ? server.listLanAddresses() : [],
     port: settings.port,
@@ -75,87 +105,100 @@ function snapshotState() {
           artist: nowPlaying.artist,
           durationMs: nowPlaying.durationMs,
           state: nowPlaying.state,
+          source: nowPlaying.source,
         }
       : null,
     lyricSource,
+    lyricError,
     lyricReady: lyricLines.length > 0,
     positionMs: pos,
-    currentText: settings.demo
-      ? (loc.current?.text ?? '演示中')
-      : !connected
-        ? '等待手机'
-        : (loc.current?.text ?? (nowPlaying ? nowPlaying.title : '等待手机')),
+    currentText,
     nextText: loc.next?.text ?? '',
+    logPath: LOG_PATH,
   };
 }
 
-function pushState() {
+function broadcastState() {
   const state = snapshotState();
-  if (settingsWin && !settingsWin.isDestroyed()) {
-    settingsWin.webContents.send('state:push', state);
-  }
-  if (overlayWin && !overlayWin.isDestroyed()) {
-    overlayWin.webContents.send('state:push', state);
+  for (const win of [settingsWin, overlayWin]) {
+    if (win && !win.isDestroyed()) win.webContents.send('state:push', state);
   }
 }
 
-let lyricsFetchSeq = 0;
 async function ensureLyrics(np) {
-  const key = `${np.artist}::${np.title}`.toLowerCase();
+  const key = `${np.artist || ''}::${np.title}`.toLowerCase();
   if (lyricKey === key && lyricLines.length) return;
   const seq = ++lyricsFetchSeq;
   lyricKey = key;
   lyricLines = [];
   lyricSource = 'loading';
-  pushState();
+  lyricError = null;
+  broadcastState();
+
   if (settings.demo) {
     lyricLines = parseLRC(DEMO_LRC);
     lyricSource = 'demo';
-    pushState();
+    broadcastState();
     return;
   }
+
+  log('fetch lyrics', np.title, np.artist);
   const result = await lyricsService.fetchLyrics(np.title, np.artist);
-  if (seq !== lyricsFetchSeq) return; // stale fetch
+  if (seq !== lyricsFetchSeq) return;
   lyricLines = result.lines;
   lyricSource = result.source;
-  pushState();
+  lyricError = result.error || null;
+  log('lyrics', result.source, 'lines', result.lines.length, result.error || '');
+  broadcastState();
 }
 
 function onNowPlaying(np) {
   nowPlaying = np;
   connected = true;
-  anchor = { positionMs: np.positionMs, wall: Date.now() };
-  ensureLyrics(np).catch(() => {});
-  pushState();
+  anchor = { positionMs: Number(np.positionMs) || 0, wall: Date.now() };
+  ensureLyrics(np).catch((e) => log('ensureLyrics fail', e.message));
+  broadcastState();
 }
 
 function createOverlay() {
-  if (overlayWin) return overlayWin;
+  if (overlayWin && !overlayWin.isDestroyed()) return overlayWin;
   const display = screen.getPrimaryDisplay();
-  const { width } = display.workAreaSize;
+  const wa = display.workArea;
+  const w = Math.min(960, wa.width - 80);
+  const h = settings.rows === 2 ? 128 : 84;
   overlayWin = new BrowserWindow({
-    width: Math.min(900, width - 80),
-    height: settings.rows === 2 ? 120 : 72,
-    x: display.workArea.x + 40,
-    y: display.workArea.y + display.workArea.height - 140,
+    width: w,
+    height: h,
+    x: wa.x + Math.round((wa.width - w) / 2),
+    y: wa.y + wa.height - h - 28,
     frame: false,
     transparent: true,
     resizable: true,
+    maximizable: false,
+    fullscreenable: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    focusable: false,
     hasShadow: false,
+    show: settings.showOverlay,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
+  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   overlayWin.loadFile(path.join(__dirname, '../src/overlay/index.html'));
   overlayWin.on('closed', () => {
     overlayWin = null;
+  });
+  overlayWin.on('resize', () => {
+    const b = overlayWin.getBounds();
+    settings.fontSize = Math.max(
+      16,
+      Math.min(48, Math.round((b.height - (settings.rows === 2 ? 48 : 24)) / (settings.rows === 2 ? 1.6 : 1.2)))
+    );
+    broadcastState();
   });
   applyOverlayInteraction();
   return overlayWin;
@@ -163,29 +206,28 @@ function createOverlay() {
 
 function applyOverlayInteraction() {
   if (!overlayWin || overlayWin.isDestroyed()) return;
-  if (settings.locked) {
-    overlayWin.setIgnoreMouseEvents(true, { forward: true });
-  } else {
-    overlayWin.setIgnoreMouseEvents(false);
+  // locked → click-through; unlocked → interactive
+  overlayWin.setIgnoreMouseEvents(!!settings.locked, { forward: !!settings.locked });
+  overlayWin.setOpacity(Math.max(0.2, Math.min(1, settings.opacity)));
+  const b = overlayWin.getBounds();
+  const targetH = settings.rows === 2 ? 128 : 84;
+  if (Math.abs(b.height - targetH) > 2) {
+    overlayWin.setBounds({ ...b, height: targetH });
   }
-  overlayWin.setOpacity(settings.opacity);
-  const bounds = overlayWin.getBounds();
-  overlayWin.setBounds({
-    ...bounds,
-    height: settings.rows === 2 ? 120 : 72,
-  });
+  if (settings.showOverlay) overlayWin.showInactive();
+  else overlayWin.hide();
 }
 
 function createSettings() {
-  if (settingsWin) {
+  if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.show();
     settingsWin.focus();
     return settingsWin;
   }
   settingsWin = new BrowserWindow({
-    width: 420,
-    height: 560,
-    resizable: false,
+    width: 440,
+    height: 620,
+    resizable: true,
     maximizable: false,
     title: '手机歌词镜像',
     webPreferences: {
@@ -202,91 +244,99 @@ function createSettings() {
   return settingsWin;
 }
 
+function rebuildTray() {
+  if (!tray) return;
+  const menu = Menu.buildFromTemplate([
+    {
+      label:
+        settings.demo
+          ? '演示模式运行中'
+          : connected
+            ? `已连接 · ${nowPlaying?.title || ''}`
+            : '等待手机连接',
+      enabled: false,
+    },
+    { type: 'separator' },
+    {
+      label: settings.showOverlay ? '隐藏歌词窗' : '显示歌词窗',
+      click: () => {
+        settings.showOverlay = !settings.showOverlay;
+        applyOverlayInteraction();
+        broadcastState();
+        rebuildTray();
+      },
+    },
+    {
+      label: settings.locked ? '解锁（可拖动）' : '锁定（点击穿透）',
+      click: () => {
+        settings.locked = !settings.locked;
+        applyOverlayInteraction();
+        broadcastState();
+        rebuildTray();
+      },
+    },
+    {
+      label: settings.demo ? '关闭演示' : '开启演示',
+      click: async () => {
+        settings.demo = !settings.demo;
+        if (settings.demo) {
+          demoStartWall = Date.now();
+          lyricKey = 'demo';
+          lyricLines = parseLRC(DEMO_LRC);
+          lyricSource = 'demo';
+        } else {
+          lyricKey = null;
+          lyricLines = [];
+          lyricSource = null;
+          if (nowPlaying) await ensureLyrics(nowPlaying);
+        }
+        broadcastState();
+        rebuildTray();
+      },
+    },
+    { type: 'separator' },
+    { label: '打开设置…', click: () => createSettings() },
+    {
+      label: '查看日志',
+      click: () => shell.openPath(LOG_PATH),
+    },
+    { type: 'separator' },
+    {
+      label: '退出',
+      click: () => {
+        app.isQuiting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(menu);
+}
+
 function createTray() {
-  tray = new Tray(iconImage());
+  tray = new Tray(trayImage());
   tray.setToolTip('手机歌词镜像');
-  const rebuild = () => {
-    const menu = Menu.buildFromTemplate([
-      {
-        label: connected || settings.demo ? '已连接手机 / 演示中' : '等待手机连接',
-        enabled: false,
-      },
-      { type: 'separator' },
-      {
-        label: settings.showOverlay ? '隐藏歌词窗' : '显示歌词窗',
-        click: () => {
-          settings.showOverlay = !settings.showOverlay;
-          if (settings.showOverlay) {
-            createOverlay().show();
-          } else if (overlayWin) {
-            overlayWin.hide();
-          }
-          pushState();
-          rebuild();
-        },
-      },
-      {
-        label: settings.locked ? '解锁移动' : '锁定歌词窗',
-        click: async () => {
-          settings.locked = !settings.locked;
-          applyOverlayInteraction();
-          pushState();
-          rebuild();
-        },
-      },
-      {
-        label: settings.demo ? '关闭演示模式' : '开启演示模式',
-        click: async () => {
-          settings.demo = !settings.demo;
-          if (settings.demo) {
-            demoStartWall = Date.now();
-            lyricKey = 'demo';
-            lyricLines = parseLRC(DEMO_LRC);
-            lyricSource = 'demo';
-          } else {
-            lyricKey = null;
-            lyricLines = [];
-            lyricSource = null;
-            if (nowPlaying) await ensureLyrics(nowPlaying);
-          }
-          pushState();
-          rebuild();
-        },
-      },
-      { type: 'separator' },
-      { label: '设置…', click: () => createSettings() },
-      {
-        label: '退出',
-        click: () => {
-          app.isQuiting = true;
-          app.quit();
-        },
-      },
-    ]);
-    tray.setContextMenu(menu);
-  };
-  rebuild();
+  rebuildTray();
   tray.on('click', () => {
-    if (settingsWin) settingsWin.show();
-    else createSettings();
+    if (settingsWin) {
+      if (settingsWin.isVisible()) settingsWin.hide();
+      else settingsWin.show();
+    } else {
+      createSettings();
+    }
   });
 }
 
 async function startServer(port) {
   if (server) await server.stop();
-  server = new StatusServer({
-    port,
-    onNowPlaying,
-  });
+  server = new StatusServer({ port, onNowPlaying });
   try {
     await server.start();
+    log('server listen', port, server.listLanAddresses().join(','));
     return { ok: true, port, addresses: server.listLanAddresses() };
   } catch (err) {
+    log('server fail', err.message);
     if (Notification.isSupported()) {
-      new Notification({
-        title: '端口占用',
-        body: `无法监听 ${port}：${err.message}`,
-      }).show();
+      new Notification({ title: '端口占用', body: `无法监听 ${port}：${err.message}` }).show();
     }
     return { ok: false, error: err.message };
   }
@@ -295,13 +345,17 @@ async function startServer(port) {
 function startTicker() {
   if (ticker) clearInterval(ticker);
   ticker = setInterval(() => {
-    const wasConnected = connected;
     if (!settings.demo && server) {
-      connected = server.isConnected();
+      const next = server.isConnected();
+      if (next !== connected) {
+        connected = next;
+        broadcastState();
+        rebuildTray();
+        return;
+      }
     }
-    if (wasConnected !== connected) pushState();
-    else if (overlayWin && !overlayWin.isDestroyed()) {
-      // keep lyrics smooth even without settings open
+    // keep overlay smooth
+    if (overlayWin && !overlayWin.isDestroyed()) {
       overlayWin.webContents.send('state:push', snapshotState());
     }
   }, 200);
@@ -312,8 +366,8 @@ function registerIpc() {
   ipcMain.handle('settings:set', async (_e, partial) => {
     const prevPort = settings.port;
     settings = { ...settings, ...partial };
-    if (partial.port && partial.port !== prevPort) {
-      await startServer(settings.port);
+    if (partial.port && Number(partial.port) !== prevPort) {
+      await startServer(Number(settings.port));
     }
     if (partial.demo !== undefined) {
       if (settings.demo) {
@@ -323,54 +377,69 @@ function registerIpc() {
         lyricSource = 'demo';
       } else {
         lyricKey = null;
+        lyricLines = [];
+        lyricSource = null;
         if (nowPlaying) await ensureLyrics(nowPlaying);
       }
     }
-    if (partial.showOverlay !== undefined) {
-      if (settings.showOverlay) createOverlay().show();
-      else if (overlayWin) overlayWin.hide();
-    }
     applyOverlayInteraction();
-    pushState();
+    broadcastState();
+    rebuildTray();
     return snapshotState();
   });
   ipcMain.handle('server:restart', async (_e, port) => {
-    const result = await startServer(port || settings.port);
+    const result = await startServer(Number(port) || settings.port);
     if (result.ok) settings.port = result.port;
-    pushState();
+    broadcastState();
     return result;
-  });
-  ipcMain.handle('demo:toggle', async (_e, on) => {
-    settings.demo = !!on;
-    if (settings.demo) {
-      demoStartWall = Date.now();
-      lyricKey = 'demo';
-      lyricLines = parseLRC(DEMO_LRC);
-      lyricSource = 'demo';
-    }
-    pushState();
-    return snapshotState();
   });
   ipcMain.handle('overlay:hide', () => {
     settings.showOverlay = false;
-    if (overlayWin) overlayWin.hide();
-    pushState();
+    applyOverlayInteraction();
+    broadcastState();
+    rebuildTray();
     return true;
   });
+  ipcMain.handle('overlay:show', () => {
+    settings.showOverlay = true;
+    if (!overlayWin) createOverlay();
+    applyOverlayInteraction();
+    broadcastState();
+    rebuildTray();
+    return true;
+  });
+  ipcMain.handle('overlay:open-settings', () => {
+    createSettings();
+    return true;
+  });
+  ipcMain.handle('overlay:move', (_e, dx, dy) => {
+    if (!overlayWin || settings.locked) return;
+    const b = overlayWin.getBounds();
+    overlayWin.setPosition(b.x + Math.round(dx), b.y + Math.round(dy));
+  });
+  ipcMain.handle('overlay:resize', (_e, dw, dh) => {
+    if (!overlayWin || settings.locked) return;
+    const b = overlayWin.getBounds();
+    const w = Math.max(280, b.width + Math.round(dw));
+    const h = Math.max(settings.rows === 2 ? 96 : 64, b.height + Math.round(dh));
+    overlayWin.setBounds({ x: b.x, y: b.y, width: w, height: h });
+  });
+  ipcMain.handle('open-log', () => shell.openPath(LOG_PATH));
 }
 
 app.whenReady().then(async () => {
+  log('app ready');
   registerIpc();
   createTray();
   createOverlay();
   await startServer(settings.port);
   startTicker();
-  // Open settings once on first launch for discoverability
   createSettings();
+  broadcastState();
 });
 
-app.on('window-all-closed', (e) => {
-  // keep tray alive
+app.on('window-all-closed', () => {
+  // keep tray
 });
 
 app.on('before-quit', async () => {

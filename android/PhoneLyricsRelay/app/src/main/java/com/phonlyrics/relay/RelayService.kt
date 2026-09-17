@@ -13,6 +13,7 @@ import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -23,19 +24,19 @@ class RelayService : Service() {
         const val EXTRA_IP = "ip"
         const val EXTRA_PORT = "port"
         private const val INTERVAL_MS = 1000L
+        private const val NOTIF_ID = 42
     }
 
-    private var ip: String = ""
+    private var ip = ""
     private var port = 8765
     private val handler = Handler(Looper.getMainLooper())
     private var manager: MediaSessionManager? = null
     private var controller: MediaController? = null
-    private var lastKey: String? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var lastTitle = ""
 
     private val listener =
-        MediaSessionManager.OnActiveSessionsChangedListener { sessions ->
-            pickController(sessions)
-        }
+        MediaSessionManager.OnActiveSessionsChangedListener { sessions -> pickController(sessions) }
 
     private val tick = object : Runnable {
         override fun run() {
@@ -46,29 +47,39 @@ class RelayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PhoneLyrics:relay").apply {
+            setReferenceCounted(false)
+            acquire(10 * 60 * 60 * 1000L) // 10h
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY restart may deliver a null intent — keep last known target.
         intent?.getStringExtra(EXTRA_IP)?.takeIf { it.isNotBlank() }?.let { ip = it }
         intent?.getIntExtra(EXTRA_PORT, -1)?.takeIf { it in 1..65535 }?.let { port = it }
+        val prefs = getSharedPreferences("relay", MODE_PRIVATE)
+        if (ip.isBlank()) ip = prefs.getString("ip", "") ?: ""
         if (ip.isBlank()) {
             stopSelf()
             return START_NOT_STICKY
         }
 
-        val notification = buildNotification("推送中 $ip:$port")
-        startForeground(1, notification)
+        startForeground(NOTIF_ID, buildNotification("准备中…"))
 
         manager = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
         try {
-            val componentName = ComponentName(this, NotificationListener::class.java)
-            pickController(manager?.getActiveSessions(componentName))
-            manager?.addOnActiveSessionsChangedListener(listener, componentName)
+            val cn = ComponentName(this, NotificationListener::class.java)
+            pickController(manager?.getActiveSessions(cn))
+            manager?.addOnActiveSessionsChangedListener(listener, cn)
         } catch (_: SecurityException) {
-            // User must enable Notification Access
+            updateNotification("请开启通知使用权")
         }
 
         handler.removeCallbacks(tick)
         handler.post(tick)
+        prefs.edit().putString("ip", ip).putInt("port", port).putBoolean("running", true).apply()
         return START_STICKY
     }
 
@@ -76,26 +87,23 @@ class RelayService : Service() {
         handler.removeCallbacks(tick)
         try {
             manager?.removeOnActiveSessionsChangedListener(listener)
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
+        wakeLock?.let { if (it.isHeld) it.release() }
+        getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         super.onDestroy()
     }
 
     private fun pickController(sessions: List<MediaController>?) {
         val list = sessions.orEmpty()
-        controller = list.firstOrNull { c ->
-            c.packageName.contains("qqmusic", ignoreCase = true)
-        } ?: list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-            ?: list.firstOrNull()
-        lastKey = null
+        controller =
+            list.firstOrNull { it.packageName.contains("qqmusic", ignoreCase = true) }
+                ?: list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                ?: list.firstOrNull()
     }
 
     private fun buildNotification(text: String): Notification {
         val pi = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, "relay")
             .setContentTitle("歌词中继")
@@ -103,29 +111,40 @@ class RelayService : Service() {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(pi)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
     }
 
+    private fun updateNotification(text: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(NOTIF_ID, buildNotification(text))
+    }
+
     private fun pushNowPlaying() {
-        val c = controller ?: return
+        val c = controller ?: run {
+            updateNotification("未检测到播放会话 · $ip:$port")
+            return
+        }
         val meta = c.metadata ?: return
         val state = c.playbackState
         val title = meta.getString(MediaMetadata.METADATA_KEY_TITLE) ?: return
-        val artist = meta.getString(MediaMetadata.METADATA_KEY_ARTIST)
-            ?: meta.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
-            ?: ""
+        val artist =
+            meta.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                ?: meta.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
+                ?: ""
         val album = meta.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
         val duration = meta.getLong(MediaMetadata.METADATA_KEY_DURATION)
         val pos = state?.position ?: 0L
-        val playing = state?.state == PlaybackState.STATE_PLAYING
-        val st = when {
-            playing -> "playing"
-            state?.state == PlaybackState.STATE_PAUSED -> "paused"
+        val st = when (state?.state) {
+            PlaybackState.STATE_PLAYING -> "playing"
+            PlaybackState.STATE_PAUSED -> "paused"
             else -> "stopped"
         }
 
-        val key = "$title|$artist|$duration"
-        if (key != lastKey) lastKey = key
+        if (title != lastTitle) {
+            lastTitle = title
+            updateNotification("$title · $artist")
+        }
 
         val payload = JSONObject().apply {
             put("title", title)
@@ -150,9 +169,10 @@ class RelayService : Service() {
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
                 conn.responseCode
                 conn.disconnect()
-            } catch (_: Exception) {
-                // swallow; next tick retries
-            }
+            } catch (_: Exception) {}
         }.start()
     }
 }
+
+// local import alias
+private typealias NotificationManager = android.app.NotificationManager

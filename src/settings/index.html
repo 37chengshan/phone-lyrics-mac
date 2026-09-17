@@ -2,67 +2,76 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>手机歌词镜像</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="app">
-      <header>
-        <h1>手机歌词镜像</h1>
-        <p class="sub">手机放 QQ 音乐 · Mac 只显示歌词</p>
+      <header class="head">
+        <div>
+          <h1>手机歌词镜像</h1>
+          <p class="sub">手机放歌 · Mac 只看词</p>
+        </div>
+        <span id="conn" class="pill off">离线</span>
       </header>
 
-      <section class="card">
+      <section class="block">
         <div class="row">
-          <span class="label">手机连接</span>
-          <span id="conn-badge" class="badge off">离线</span>
+          <span class="k">正在播放</span>
+          <span id="song" class="v muted">—</span>
         </div>
-        <div class="meta" id="conn-meta">等待设备上报…</div>
-        <div class="ips" id="ips"></div>
+        <div class="row">
+          <span class="k">推送到</span>
+          <code id="endpoint" class="mono">—</code>
+        </div>
+        <button id="copy-ip" class="btn ghost" type="button">复制地址</button>
       </section>
 
-      <section class="card">
-        <h2>连接选项</h2>
+      <section class="block">
+        <h2>连接</h2>
         <label class="field">
-          <span>监听端口</span>
-          <input id="port" type="number" min="1024" max="65535" value="8765" />
+          <span>端口</span>
+          <div class="inline">
+            <input id="port" type="number" min="1024" max="65535" value="8765" />
+            <button id="restart" class="btn" type="button">重启监听</button>
+          </div>
         </label>
-        <button id="btn-restart" class="btn">重启监听服务</button>
-        <p class="hint">手机填 Mac 的局域网 IP，路径 <code>/api/now-playing</code></p>
       </section>
 
-      <section class="card">
-        <h2>歌词外观</h2>
+      <section class="block">
+        <h2>歌词</h2>
         <label class="field">
-          <span>字号 <b id="font-val">28</b>px</span>
-          <input id="font" type="range" min="16" max="48" value="28" />
+          <span>字号 <b id="font-val">30</b></span>
+          <input id="font" type="range" min="16" max="48" />
         </label>
-        <div class="field row">
+        <div class="field">
           <span>排版</span>
           <div class="seg">
-            <button id="rows1" class="seg-btn">单行</button>
-            <button id="rows2" class="seg-btn">双行</button>
+            <button id="rows1" type="button">单行</button>
+            <button id="rows2" type="button">双行</button>
           </div>
         </div>
-        <label class="field row">
+        <label class="switch">
           <span>锁定窗口</span>
           <input id="lock" type="checkbox" />
         </label>
         <label class="field">
-          <span>透明度 <b id="op-val">92</b>%</span>
-          <input id="opacity" type="range" min="40" max="100" value="92" />
+          <span>透明度 <b id="op-val">95</b>%</span>
+          <input id="opacity" type="range" min="35" max="100" />
         </label>
-        <label class="field row">
+        <label class="switch">
           <span>演示模式</span>
           <input id="demo" type="checkbox" />
         </label>
       </section>
 
       <footer>
-        <button id="btn-hide" class="btn ghost">隐藏歌词窗</button>
-        <span id="lyric-src" class="muted"></span>
+        <button id="show-overlay" class="btn" type="button">显示歌词窗</button>
+        <button id="hide-overlay" class="btn ghost" type="button">隐藏</button>
+        <button id="open-log" class="btn ghost" type="button">日志</button>
       </footer>
+      <p id="lyric-src" class="foot-note"></p>
     </main>
     <script src="renderer.js"></script>
   </body>
