@@ -11,7 +11,8 @@ function applyState(state) {
     ? `${state.nowPlaying.artist || ''} ${state.nowPlaying.artist ? '· ' : ''}${state.nowPlaying.title}`
     : state.demo
       ? '演示模式'
-      : '等待手机推送';
+      : '等待手机…';
+  $('pkg').textContent = state.nowPlaying?.source || '—';
 
   const addr =
     (state.addresses && state.addresses[0]) || '127.0.0.1';

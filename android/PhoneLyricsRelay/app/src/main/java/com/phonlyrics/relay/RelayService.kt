@@ -16,14 +16,17 @@ import android.os.Looper
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.URL
 
 class RelayService : Service() {
     companion object {
         const val EXTRA_IP = "ip"
         const val EXTRA_PORT = "port"
-        private const val INTERVAL_MS = 1000L
+        private const val INTERVAL_MS = 800L
         private const val NOTIF_ID = 42
     }
 
@@ -33,7 +36,8 @@ class RelayService : Service() {
     private var manager: MediaSessionManager? = null
     private var controller: MediaController? = null
     private var wakeLock: PowerManager.WakeLock? = null
-    private var lastTitle = ""
+    private var lastPushTitle = ""
+    private var lastError = ""
 
     private val listener =
         MediaSessionManager.OnActiveSessionsChangedListener { sessions -> pickController(sessions) }
@@ -52,7 +56,7 @@ class RelayService : Service() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PhoneLyrics:relay").apply {
             setReferenceCounted(false)
-            acquire(10 * 60 * 60 * 1000L) // 10h
+            acquire(12 * 60 * 60 * 1000L)
         }
     }
 
@@ -66,20 +70,25 @@ class RelayService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIF_ID, buildNotification("准备中…"))
+        startForeground(NOTIF_ID, buildNotification("启动中 $ip:$port"))
 
         manager = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
         try {
             val cn = ComponentName(this, NotificationListener::class.java)
-            pickController(manager?.getActiveSessions(cn))
+            val sessions = manager?.getActiveSessions(cn)
+            pickController(sessions)
             manager?.addOnActiveSessionsChangedListener(listener, cn)
-        } catch (_: SecurityException) {
-            updateNotification("请开启通知使用权")
+            lastError = if (sessions.isNullOrEmpty()) "无播放会话 · 请开通知使用权并播放 QQ 音乐" else ""
+        } catch (e: SecurityException) {
+            lastError = "未授予通知使用权"
+            updateNotification(lastError)
         }
 
         handler.removeCallbacks(tick)
         handler.post(tick)
         prefs.edit().putString("ip", ip).putInt("port", port).putBoolean("running", true).apply()
+        // LAN discovery beacon so phone/Mac can find each other
+        startBeacon()
         return START_STICKY
     }
 
@@ -93,12 +102,19 @@ class RelayService : Service() {
         super.onDestroy()
     }
 
+    /** Prefer QQ Music exclusively when present — never mix with other apps. */
     private fun pickController(sessions: List<MediaController>?) {
         val list = sessions.orEmpty()
-        controller =
-            list.firstOrNull { it.packageName.contains("qqmusic", ignoreCase = true) }
-                ?: list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-                ?: list.firstOrNull()
+        val qq = list.filter {
+            it.packageName?.contains("qqmusic", ignoreCase = true) == true ||
+                it.packageName == "com.tencent.qqmusic" ||
+                it.packageName == "com.tencent.qqmusicpad"
+        }
+        controller = qq.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: qq.firstOrNull()
+            ?: list.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            ?: list.firstOrNull()
+        if (controller == null) lastError = "未检测到 QQ 音乐播放"
     }
 
     private fun buildNotification(text: String): Notification {
@@ -116,24 +132,51 @@ class RelayService : Service() {
     }
 
     private fun updateNotification(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
+        val nm = getSystemService(android.app.NotificationManager::class.java)
         nm.notify(NOTIF_ID, buildNotification(text))
     }
 
+    private fun startBeacon() {
+        Thread {
+            try {
+                DatagramSocket().use { socket ->
+                    socket.broadcast = true
+                    val payload = "PHONLYRICS:$ip:$port".toByteArray()
+                    val addr = InetAddress.getByName("255.255.255.255")
+                    while (!Thread.currentThread().isInterrupted) {
+                        socket.send(DatagramPacket(payload, payload.size, addr, 8766))
+                        Thread.sleep(2000)
+                    }
+                }
+            } catch (_: Exception) {}
+        }.start()
+    }
+
     private fun pushNowPlaying() {
-        val c = controller ?: run {
-            updateNotification("未检测到播放会话 · $ip:$port")
+        val c = controller
+        if (c == null) {
+            updateNotification(if (lastError.isEmpty()) "等待 QQ 音乐…" else lastError)
+            // re-scan sessions periodically
+            try {
+                val cn = ComponentName(this, NotificationListener::class.java)
+                pickController(manager?.getActiveSessions(cn))
+            } catch (_: Exception) {}
             return
         }
-        val meta = c.metadata ?: return
-        val state = c.playbackState
+        val meta = c.metadata
+        if (meta == null) {
+            updateNotification("会话无元数据")
+            return
+        }
         val title = meta.getString(MediaMetadata.METADATA_KEY_TITLE) ?: return
+        if (title.isBlank()) return
         val artist =
             meta.getString(MediaMetadata.METADATA_KEY_ARTIST)
                 ?: meta.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
                 ?: ""
         val album = meta.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
         val duration = meta.getLong(MediaMetadata.METADATA_KEY_DURATION)
+        val state = c.playbackState
         val pos = state?.position ?: 0L
         val st = when (state?.state) {
             PlaybackState.STATE_PLAYING -> "playing"
@@ -141,9 +184,10 @@ class RelayService : Service() {
             else -> "stopped"
         }
 
-        if (title != lastTitle) {
-            lastTitle = title
-            updateNotification("$title · $artist")
+        val label = "$title · $artist"
+        if (label != lastPushTitle) {
+            lastPushTitle = label
+            updateNotification("推送 $label")
         }
 
         val payload = JSONObject().apply {
@@ -153,7 +197,7 @@ class RelayService : Service() {
             put("durationMs", duration)
             put("positionMs", pos)
             put("state", st)
-            put("source", c.packageName)
+            put("source", c.packageName ?: "unknown")
             put("ts", System.currentTimeMillis())
         }
 
@@ -162,17 +206,17 @@ class RelayService : Service() {
                 val url = URL("http://$ip:$port/api/now-playing")
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
+                conn.connectTimeout = 1200
+                conn.readTimeout = 1200
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.outputStream.use { it.write(payload.toString().toByteArray()) }
-                conn.responseCode
+                val code = conn.responseCode
                 conn.disconnect()
-            } catch (_: Exception) {}
+                lastError = if (code == 200) "" else "HTTP $code"
+            } catch (e: Exception) {
+                lastError = e.message ?: "网络失败"
+            }
         }.start()
     }
 }
-
-// local import alias
-private typealias NotificationManager = android.app.NotificationManager

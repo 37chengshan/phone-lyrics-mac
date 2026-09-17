@@ -87,9 +87,11 @@ function snapshotState() {
   const online = settings.demo || connected;
   let currentText = '等待手机';
   if (settings.demo) currentText = loc.current?.text ?? '演示中';
-  else if (online) {
-    currentText = loc.current?.text ?? (nowPlaying ? nowPlaying.title : '等待手机');
-  } else if (nowPlaying) {
+  else if (online && nowPlaying) {
+    currentText = loc.current?.text ?? nowPlaying.title;
+  } else if (online && !nowPlaying) {
+    currentText = '已连接 · 等待播放';
+  } else {
     currentText = '等待手机';
   }
 
@@ -349,12 +351,20 @@ function startTicker() {
       const next = server.isConnected();
       if (next !== connected) {
         connected = next;
+        if (!connected) {
+          // never keep another song's lyrics when phone is gone
+          nowPlaying = null;
+          lyricLines = [];
+          lyricKey = null;
+          lyricSource = null;
+          lyricError = null;
+          log('phone disconnected — cleared lyrics');
+        }
         broadcastState();
         rebuildTray();
         return;
       }
     }
-    // keep overlay smooth
     if (overlayWin && !overlayWin.isDestroyed()) {
       overlayWin.webContents.send('state:push', snapshotState());
     }
