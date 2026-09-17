@@ -22,6 +22,11 @@ object RelayLog {
     private const val NOW_TITLE_KEY = "nowTitle"
     private const val NOW_ARTIST_KEY = "nowArtist"
     private const val NOW_PLAYING_KEY = "nowPlaying"
+    private const val SENT_COUNT_KEY = "sentCount"
+    private const val FAILED_COUNT_KEY = "failedCount"
+    private const val LAST_LATENCY_KEY = "lastLatencyMs"
+    private const val LAST_SENT_AT_KEY = "lastSentAtMs"
+    private const val LAST_FAILURE_KEY = "lastFailureKind"
     private const val PREFS = "relay"
     private const val ALIVE_WINDOW_MS = 8_000L
     private const val MAX_LINES = 200
@@ -107,6 +112,88 @@ object RelayLog {
             prefs.getString(NOW_ARTIST_KEY, "").orEmpty(),
             prefs.getBoolean(NOW_PLAYING_KEY, false),
         )
+    }
+
+    // MARK: - 链路统计(2026-09-17,给状态页的仪表盘用)
+    //
+    // 用户要求"仪表盘"。原来这些数字**一个都没记** —— 发送成功没成功、推送过多少条、
+    // 往返多久,全都没有,所以界面只能给"运行中"这种非黑即白的结论,用户看不出它是不是
+    // 真在正常工作。这里只记最少的四个量,每个都对应一个用户真会问的问题:
+    //
+    //   sent / failed   它到底送出去了吗?
+    //   lastLatencyMs   局域网通不通、卡不卡?
+    //   lastSentAtMs    现在还在送吗?
+    //
+    // ⚠️ 刻意**不记**失败原因、URL 或响应体:那些可能带上 Authorization 头或设备标识。
+    // 这里全是不敏感的计数与时长。
+    /// 一条事件**成功送达**。
+    ///
+    /// ⚠️ 只有成功才在这里记。失败**不能**跟它混在一个入口:发送队列对瞬时失败会重试,每试一次
+    /// 都会调一次发送 —— 失败要按"这条到底有没有送达"算,而那个判断只有队列知道(见
+    /// RelayEventQueue 的 onExhausted)。混在一起的后果是网络抖一下,界面上就出现"失败 3"。
+    fun noteSendSuccess(context: Context, latencyMs: Long) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(SENT_COUNT_KEY, prefs.getLong(SENT_COUNT_KEY, 0L) + 1)
+            .putLong(LAST_SENT_AT_KEY, System.currentTimeMillis())
+            .putLong(LAST_LATENCY_KEY, latencyMs)
+            // 一旦有成功,上一次的故障类型就作废了 —— 留着会让界面一边显示"链路正常"
+            // 一边提示"令牌失效",而那是刚才的事、已经自愈了。
+            .remove(LAST_FAILURE_KEY)
+            .apply()
+    }
+
+    /// 一条事件**重试耗尽仍未送达**。`kind` 见 RelayFailureKind。
+    ///
+    /// 不清 lastLatency:那一次的耗时不代表链路质量(多半是超时打满 1500ms),留着反而误导;
+    /// 界面会另外用 lastSentAt 判断"多久没成功了"。
+    fun noteSendFailure(context: Context, kind: String) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(FAILED_COUNT_KEY, prefs.getLong(FAILED_COUNT_KEY, 0L) + 1)
+            .putString(LAST_FAILURE_KEY, kind)
+            .apply()
+    }
+
+    /// 最近一次失败的类别。给界面出对症的提示用 —— "连不上"和"令牌失效"用户要做的事
+    /// 完全不同(查 Wi-Fi vs 回 Mac 重新配对),笼统说"失败"等于没说。
+    fun lastFailureKind(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(LAST_FAILURE_KEY, null)
+
+    /// 读统计。跟 nowPlaying 一个路子:一次读齐,免得调用方分几次读拼出个半新半旧的组合。
+    fun sendStats(context: Context): SendStats {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return SendStats(
+            sent = prefs.getLong(SENT_COUNT_KEY, 0L),
+            failed = prefs.getLong(FAILED_COUNT_KEY, 0L),
+            lastLatencyMs = prefs.getLong(LAST_LATENCY_KEY, -1L),
+            lastSentAtMs = prefs.getLong(LAST_SENT_AT_KEY, 0L),
+        )
+    }
+
+    /// 开新一次同步时清零:否则"这次送出去多少"会被上一次的累计值盖住,用户重启服务后
+    /// 看到一个大数字,没法判断这次到底通没通。
+    fun resetSendStats(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(SENT_COUNT_KEY).remove(FAILED_COUNT_KEY)
+            .remove(LAST_LATENCY_KEY).remove(LAST_SENT_AT_KEY).remove(LAST_FAILURE_KEY)
+            .apply()
+    }
+
+    /// 链路统计快照。`lastLatencyMs` 为 -1 表示还没有过成功发送。
+    data class SendStats(
+        val sent: Long,
+        val failed: Long,
+        val lastLatencyMs: Long,
+        val lastSentAtMs: Long,
+    ) {
+        /// 成功率。没有任何一次尝试时返回 nil —— 界面据此显示"—",而不是编一个 0%。
+        val successRate: Double?
+            get() {
+                val total = sent + failed
+                return if (total == 0L) null else sent.toDouble() / total.toDouble()
+            }
     }
 
     /// 读出最近几条(诊断页展示用)。

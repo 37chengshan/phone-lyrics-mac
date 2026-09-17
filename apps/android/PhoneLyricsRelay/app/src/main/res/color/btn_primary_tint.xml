@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 主按钮的着色(2026-09-17)。
+
+  ⚠️ 为什么不用 android:background + selector:这一页的 Button 在 Material3 主题下被渲染成
+  MaterialButton,它**自己接管背景着色**(默认取主题的 colorPrimary 作 backgroundTint),
+  我们写在 android:background 上的 selector 会被它盖掉 —— 表现就是"按下去颜色纹丝不动",
+  用户实测报的正是这个。Material 的正确做法是把状态交给 backgroundTint。
+
+  三态:
+    enabled=false  忙碌中(见 setBusy),压暗一半;
+    pressed=true   按下时加深 —— 这一档就是补上来的反馈;
+    默认           正常主色。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#4D7AA2FF" />
+    <item android:state_pressed="true" android:color="#5B85E0" />
+    <item android:color="#7AA2FF" />
+</selector>
+

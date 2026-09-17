@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  云备份 / 换机传输的排除规则(2026-09-17,配 android:fullBackupContent)。
+
+  为什么要排除配对数据:`allowBackup` 默认开着,系统会把整个 SharedPreferences 备份到用户
+  的云端、换机时再恢复。而配对令牌是**这台手机跟那台 Mac 之间的凭据** —— 它跟着备份跑到
+  另一台设备上没有任何意义(那台设备的 Android Keystore 里没有对应的密钥,解不出来),
+  而且把凭据复制到别处本身就不该做。
+
+  实测过这个后果:重装/换机后 `relay_secure` 里的密文还在,但 Keystore 密钥不在,
+  `SecureTokenStore.load()` 解密失败返回 null —— 表现是"看着像是配对过,实际连不上",
+  比干净地显示"未配对"更难排查。干脆从一开始就不让它被备份。
+
+  ⚠️ 两个文件都要:API 30 以下读 fullBackupContent(下面这个),API 31+ 读
+  dataExtractionRules。**只写一个的话新版系统上规则不生效**,而那种"规则看着写了却没起作用"
+  的情况在测试时很难发现(要真去换一次机才看得出来)。 -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="relay_secure.xml" />
+    <exclude domain="sharedpref" path="relay.xml" />
+    <exclude domain="file" path="relay-log.txt" />
+</full-backup-content>
+

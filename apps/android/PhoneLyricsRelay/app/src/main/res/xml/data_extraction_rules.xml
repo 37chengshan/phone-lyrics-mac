@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 31+ 的备份规则(配 android:dataExtractionRules)。内容与 backup_rules.xml 对应,
+     但那边那套语法在新系统上不被读取 —— 两个都得写,理由见 backup_rules.xml 的注释。
+
+     ⚠️ Android 12 起把"云备份"和"换机传输"拆成两套规则(cloud-backup / device-transfer),
+     这里两套都要排除:配对令牌既不该上云,也不该跟着换机跑到新设备上。 -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="relay_secure.xml" />
+        <exclude domain="sharedpref" path="relay.xml" />
+        <exclude domain="file" path="relay-log.txt" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="relay_secure.xml" />
+        <exclude domain="sharedpref" path="relay.xml" />
+        <exclude domain="file" path="relay-log.txt" />
+    </device-transfer>
+</data-extraction-rules>
+

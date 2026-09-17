@@ -10,6 +10,7 @@
   挡住」)。这份布局不再指望主题里的 fitsSystemWindows,而是由 MainActivity 用
   WindowInsets 给根布局加 padding,那样刘海/挖孔/手势条三种机型都能正确让位。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -207,12 +208,161 @@
                         android:textSize="12sp" />
                 </LinearLayout>
 
+                <!-- 链路统计(2026-09-17,用户要求"仪表盘")。
+
+                     为什么要它:原来这一页只能给"运行中"这种非黑即白的结论,用户看不出
+                     它是不是**真的在正常工作** —— 服务活着但一条都发不出去,界面照样显示
+                     运行中。这四个数各回答一个具体问题:送出去了吗、失败过几次、快不快、
+                     最近一次是什么时候。 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="链路统计"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <!-- 四格数字。用 weight 均分,窄屏也不挤。 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statSent"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="#EEF1F5"
+                                android:textSize="19sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:text="已发送"
+                                android:textColor="#5C6470"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statFailed"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="0"
+                                android:textColor="#EEF1F5"
+                                android:textSize="19sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:text="失败"
+                                android:textColor="#5C6470"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statLatency"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textColor="#EEF1F5"
+                                android:textSize="19sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:text="延迟"
+                                android:textColor="#5C6470"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/statLast"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textColor="#EEF1F5"
+                                android:textSize="19sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="1dp"
+                                android:text="最近"
+                                android:textColor="#5C6470"
+                                android:textSize="11sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <!-- 成功率条。视觉上比读一个百分数快 —— 满格就是全通。 -->
+                    <ProgressBar
+                        android:id="@+id/statBar"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="#3DD68C"
+                        android:progressBackgroundTint="#1FFFFFFF" />
+
+                    <TextView
+                        android:id="@+id/statHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:lineSpacingExtra="2dp"
+                        android:text="开始同步后这里会显示实时数据"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
                 <Button
                     android:id="@+id/toggle"
+                        app:backgroundTint="@color/btn_primary_tint"
+                        android:stateListAnimator="@animator/btn_press"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="14dp"
-                    android:background="@drawable/btn_primary"
                     android:paddingTop="14dp"
                     android:paddingBottom="14dp"
                     android:text="开始同步"
@@ -300,10 +450,11 @@
 
                     <Button
                         android:id="@+id/btnTest"
+                        app:backgroundTint="@color/btn_ghost_tint"
+                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:background="@drawable/btn_ghost"
                         android:text="测试连接"
                         android:textColor="#EEF1F5" />
                 </LinearLayout>
@@ -349,12 +500,24 @@
 
                     <Button
                         android:id="@+id/btnPair"
+                        app:backgroundTint="@color/btn_primary_tint"
+                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:background="@drawable/btn_primary"
                         android:text="配对并保存"
                         android:textColor="#0B0D11" />
+
+                    <Button
+                        android:id="@+id/btnUnpair"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:stateListAnimator="@animator/btn_press"
+                        android:text="解除配对"
+                        android:textColor="#FF7B72"
+                        android:visibility="gone"
+                        app:backgroundTint="@color/btn_ghost_tint" />
 
                     <TextView
                         android:id="@+id/pairResult"
@@ -411,10 +574,11 @@
 
                     <Button
                         android:id="@+id/btnNotifAccess"
+                        app:backgroundTint="@color/btn_ghost_tint"
+                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:background="@drawable/btn_ghost"
                         android:text="去开启"
                         android:textColor="#EEF1F5" />
                 </LinearLayout>
@@ -446,10 +610,11 @@
 
                     <Button
                         android:id="@+id/btnBattery"
+                        app:backgroundTint="@color/btn_ghost_tint"
+                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:background="@drawable/btn_ghost"
                         android:text="去关闭"
                         android:textColor="#EEF1F5" />
                 </LinearLayout>

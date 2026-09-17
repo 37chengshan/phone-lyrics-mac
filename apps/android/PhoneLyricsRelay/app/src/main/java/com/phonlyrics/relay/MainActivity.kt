@@ -70,10 +70,18 @@ class MainActivity : AppCompatActivity() {
     private val discoveryStatus by lazy { findViewById<TextView>(R.id.discoveryStatus) }
     private val pairState by lazy { findViewById<TextView>(R.id.pairState) }
     private val pairResult by lazy { findViewById<TextView>(R.id.pairResult) }
+    private val btnUnpair by lazy { findViewById<Button>(R.id.btnUnpair) }
     private val syncState by lazy { findViewById<TextView>(R.id.syncState) }
     private val syncHint by lazy { findViewById<TextView>(R.id.syncHint) }
     private val nowTitle by lazy { findViewById<TextView>(R.id.nowTitle) }
     private val nowArtist by lazy { findViewById<TextView>(R.id.nowArtist) }
+    // 链路统计四格(2026-09-17,用户要求"仪表盘")。见 applyDashboard 的注释。
+    private val statSent by lazy { findViewById<TextView>(R.id.statSent) }
+    private val statFailed by lazy { findViewById<TextView>(R.id.statFailed) }
+    private val statLatency by lazy { findViewById<TextView>(R.id.statLatency) }
+    private val statLast by lazy { findViewById<TextView>(R.id.statLast) }
+    private val statBar by lazy { findViewById<android.widget.ProgressBar>(R.id.statBar) }
+    private val statHint by lazy { findViewById<TextView>(R.id.statHint) }
     private val statusLog by lazy { findViewById<TextView>(R.id.statusLog) }
     private val permNotifState by lazy { findViewById<TextView>(R.id.permNotifState) }
     private val permBatteryState by lazy { findViewById<TextView>(R.id.permBatteryState) }
@@ -109,6 +117,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.tabConnect).setOnClickListener { switchTab(Tab.CONNECT) }
         findViewById<TextView>(R.id.tabPerms).setOnClickListener { switchTab(Tab.PERMS) }
         findViewById<Button>(R.id.btnPair).setOnClickListener { pair() }
+        btnUnpair.setOnClickListener { confirmUnpair() }
         findViewById<Button>(R.id.btnTest).setOnClickListener { testConnection() }
         findViewById<Button>(R.id.btnNotifAccess).setOnClickListener {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
@@ -182,6 +191,32 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /// 解除配对(2026-09-17)。清掉令牌并停掉同步 —— 见调用点上方那段注释,原来没有这个出口。
+    ///
+    /// ⚠️ 要**二次确认**:令牌一清,用户必须回 Mac 上重新生成配对码才能再连,是个不可逆
+    /// (准确说是"要重来一遍")的动作,误触的代价不小。
+    private fun confirmUnpair() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("解除配对?")
+            .setMessage("解除后需要回到 Mac 的「手机连接」页重新生成配对码,再配一次才能继续同步。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("解除") { _, _ -> unpair() }
+            .show()
+    }
+
+    private fun unpair() {
+        // 先停同步:否则服务还拿着旧令牌在发,解除完界面看着也还是"运行中"。
+        if (running) stopRelay()
+        SecureTokenStore(this).clear()
+        getSharedPreferences("relay", MODE_PRIVATE).edit()
+            .remove("pairedAtMs").remove("macStableId").apply()
+        RelayLog.note("unpaired by user")
+        pairResult.visibility = View.GONE
+        pairingCode.setText("")
+        refreshUi()
+        toast("已解除配对")
+    }
+
     private fun pair() {
         val host = macIp.text.toString().trim()
         val port = macPort.text.toString().toIntOrNull() ?: 8765
@@ -203,6 +238,7 @@ class MainActivity : AppCompatActivity() {
                 setBusy(button, false, "配对并保存")
                 if (result.isSuccess) {
                     prefs.edit().putString("ip", host).putInt("port", port)
+                        .putLong("pairedAtMs", System.currentTimeMillis())
                         .putString("macStableId", selectedMac?.stableId).apply()
                     pairingCode.setText("")
                     // ⚠️ 这里**不能**再调 refreshUi():它会重写 pairState / statusLog,把刚写下的
@@ -313,7 +349,30 @@ class MainActivity : AppCompatActivity() {
         // 用户不知道是该等还是该做什么。
         applyNowPlaying()
 
-        pairState.text = if (paired) "已配对" else "尚未配对"
+        // 配对状态(2026-09-17 补)。
+        //
+        // ⚠️ "打开就显示已配对"是**对的**,不是 bug:令牌在配对成功那一刻就持久保存了,
+        // `adb install -r` 覆盖安装不会清应用数据,所以打开时它本来就在。用户会怀疑这个
+        // 状态,是因为界面只写"已配对"两个字 —— 看不出配的是哪台、什么时候配的。
+        // 补上这两个信息,这个状态就有依据了。
+        val pairedAt = getSharedPreferences("relay", MODE_PRIVATE).getLong("pairedAtMs", 0L)
+        val pairedHost = getSharedPreferences("relay", MODE_PRIVATE).getString("ip", "").orEmpty()
+        pairState.text = if (paired) {
+            val when_ = if (pairedAt > 0L) {
+                val days = (System.currentTimeMillis() - pairedAt) / 86_400_000L
+                when {
+                    days < 1L -> "今天"
+                    days < 30L -> "${days} 天前"
+                    else -> "${days / 30L} 个月前"
+                }
+            } else ""
+            val where = if (pairedHost.isNotBlank()) " · $pairedHost" else ""
+            val tail = if (when_.isBlank()) where else " · $when_$where"
+            "已配对$tail"
+        } else "尚未配对"
+        // 已配对时给一个"解除"的出口。没有它的话,配错了 Mac 或想换一台时,用户在应用里
+        // **没有任何办法**重来 —— 只能卸载重装(而且有系统备份的话数据还会回来)。
+        btnUnpair.visibility = if (paired) View.VISIBLE else View.GONE
         pairState.setTextColor(if (paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
         permNotifState.text = "通知使用权:${if (notifEnabled) "已开启" else "未开启"}"
         permNotifState.setTextColor(if (notifEnabled) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
@@ -335,6 +394,7 @@ class MainActivity : AppCompatActivity() {
             append("最近记录:\n")
             append(RelayLog.tail(activityContext, 10))
         }
+        applyDashboard()
     }
 
     private fun isPaired(): Boolean = !SecureTokenStore(this).load().isNullOrBlank()
@@ -354,6 +414,7 @@ class MainActivity : AppCompatActivity() {
         if (wasRunning != running) { refreshUi(); return }
         applyStatusPill()
         applyNowPlaying()
+        applyDashboard()
     }
 
     /// 状态胶囊的文案与配色。抽出来是为了让两条刷新路径共用 —— 否则"每秒那条"和"完整那条"
@@ -397,6 +458,77 @@ class MainActivity : AppCompatActivity() {
                 !lastKnownNotifEnabled -> "等通知使用权开启后才能读到"
                 else -> "等待 QQ 音乐开始播放"
             })
+        }
+    }
+
+    /// 链路统计面板(2026-09-17,用户要求"仪表盘")。
+    ///
+    /// 四个数各回答一个具体问题:"已发送"= 送出去过吗、"失败"= 有没有反复失败、
+    /// "延迟"= 局域网快不快、"最近"= 现在还在送吗。数据来源见 RelayLog.noteSendResult。
+    ///
+    /// ⚠️ 没有数据时一律显示 "—" 而不是 0:0 是个**结论**(一条都没成功),而"还没有数据"
+    /// 是另一回事。两者混在一起会让刚开同步的用户以为已经失败了。
+    private fun applyDashboard() {
+        val stats = RelayLog.sendStats(this)
+        statSent.text = if (stats.sent > 0) "${stats.sent}" else if (running) "0" else "—"
+        statFailed.text = if (stats.failed > 0) "${stats.failed}" else if (running) "0" else "—"
+        statFailed.setTextColor(
+            if (stats.failed > 0) 0xFFFF7B72.toInt() else 0xFFEEF1F5.toInt())
+        statLatency.text = if (stats.lastLatencyMs >= 0) "${stats.lastLatencyMs}ms" else "—"
+
+        // "最近"用相对时间而不是绝对时刻:用户要判断的是"它还活着吗","3 秒前"比"21:58:12"直观。
+        // 超过一分钟换成粗粒度,免得一个不断跳秒的数字让人盯着看。
+        statLast.text = when {
+            !running || stats.lastSentAtMs == 0L -> "—"
+            else -> {
+                val ago = (System.currentTimeMillis() - stats.lastSentAtMs) / 1000
+                when {
+                    ago < 1 -> "刚刚"
+                    ago < 60 -> "${ago} 秒前"
+                    ago < 3600 -> "${ago / 60} 分钟前"
+                    else -> "${ago / 3600} 小时前"
+                }
+            }
+        }
+        // 超过 15 秒没有成功发送过就是个信号:每秒一条的正常节奏下,那意味着一直在失败。
+        statLast.setTextColor(
+            if (running && stats.lastSentAtMs > 0L &&
+                System.currentTimeMillis() - stats.lastSentAtMs > 15_000L) 0xFFFF7B72.toInt()
+            else 0xFFEEF1F5.toInt())
+
+        val rate = stats.successRate
+        val barValue = rate?.let { (it * 100).toInt() } ?: 0
+        if (statBar.progress != barValue) {
+            if (reduceMotion) {
+                statBar.progress = barValue
+            } else {
+                // 平滑推进而不是瞬间跳 —— 这是这一页唯一持续变化的指标,动一下能让
+                // "它在正常工作"这件事被看见。
+                android.animation.ObjectAnimator.ofInt(statBar, "progress", statBar.progress, barValue)
+                    .setDuration(300).start()
+            }
+        }
+        statBar.progressTintList = android.content.res.ColorStateList.valueOf(
+            when {
+                rate == null -> 0xFF5C6470.toInt()
+                rate >= 0.95 -> 0xFF3DD68C.toInt()
+                rate >= 0.7 -> 0xFFFFA657.toInt()
+                else -> 0xFFFF7B72.toInt()
+            })
+
+        // 失败提示要**对症**:"连不上"和"令牌失效"用户要做的事完全不同 —— 前者查网络,
+        // 后者必须回 Mac 重新配对,在手机上怎么折腾都没用。笼统说"失败"等于把用户扔在原地。
+        val failure = RelayLog.lastFailureKind(this)
+        statHint.text = when {
+            !running -> "开始同步后这里会显示实时数据"
+            rate == null -> "正在等待第一条数据…"
+            stats.failed > 0 && failure == "auth" ->
+                "Mac 已不再认这个令牌(可能被解除过配对)。回 Mac 重新生成配对码,再配一次"
+            stats.failed > 0 && failure == "unreachable" ->
+                "连不上 Mac。确认两台设备在同一 Wi-Fi,且 Mac 上的 Lyrimuse 正在运行"
+            stats.failed > 0 -> "有 ${stats.failed} 条重试后仍未送达,详见下方诊断记录"
+            stats.sent < 3 -> "链路正常,正在采集"
+            else -> "链路正常 · 成功率 ${(rate * 100).toInt()}%"
         }
     }
 

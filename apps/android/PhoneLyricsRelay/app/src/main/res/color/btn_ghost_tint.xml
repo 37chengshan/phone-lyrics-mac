@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 次级(描边)按钮的着色。同上,走 backgroundTint 而不是 background。
+
+  描边按钮本来是深底上的"空心"样式,所以正常态给一个几乎看不出来的深色填充
+  (跟面板同色),按下时提亮 —— 视觉上就是"垫了一下"。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false" android:color="#0AFFFFFF" />
+    <item android:state_pressed="true" android:color="#26FFFFFF" />
+    <item android:color="#14FFFFFF" />
+</selector>
+

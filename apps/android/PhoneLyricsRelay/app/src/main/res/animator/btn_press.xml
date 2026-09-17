@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 按钮按压时的"缩一下"(2026-09-17)。
+
+  给按钮的 android:stateListAnimator 用:按下缩到 0.97、松手弹回。
+  为什么除了改色还要缩:改色在深色主题下变化不大(MaterialButton 自己还会压一层 ripple,
+  两件事叠在一起反而糊),而轻微缩放是触觉式的反馈 —— 手指按住时那种"按到了"的感觉主要
+  来自位移。0.97 是"看得出但不跳"的量,再小就晃了。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_pressed="true">
+        <set>
+            <objectAnimator
+                android:duration="90"
+                android:propertyName="scaleX"
+                android:valueTo="0.97"
+                android:valueType="floatType" />
+            <objectAnimator
+                android:duration="90"
+                android:propertyName="scaleY"
+                android:valueTo="0.97"
+                android:valueType="floatType" />
+        </set>
+    </item>
+    <item>
+        <set>
+            <objectAnimator
+                android:duration="140"
+                android:propertyName="scaleX"
+                android:valueTo="1.0"
+                android:valueType="floatType" />
+            <objectAnimator
+                android:duration="140"
+                android:propertyName="scaleY"
+                android:valueTo="1.0"
+                android:valueType="floatType" />
+        </set>
+    </item>
+</selector>
+

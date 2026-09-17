@@ -29,6 +29,10 @@ class RelayService : Service() {
     private lateinit var discovery: MacDiscoveryManager
     private var previous: QqPlaybackSnapshot? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    /// 最近一次发送失败属于哪一类(401 = 令牌失效 / unreachable = 连不上 / other = 其它)。
+    /// 给"重试耗尽"那一刻的失败计数用 —— 见下面 sender 里的注释。
+    @Volatile
+    private var lastFailureKind = "other"
 
     private val heartbeat = object : Runnable {
         override fun run() {
@@ -55,7 +59,27 @@ class RelayService : Service() {
         factory = PlaybackEnvelopeFactory(UUID.randomUUID().toString(), deviceId)
         api = RelayApiClient(prefs.getString("ip", "").orEmpty(), prefs.getInt("port", 8765),
             SecureTokenStore(this).load().orEmpty())
-        queue = RelayEventQueue(sender = api::send)
+        // sender 走带计时的那个,顺手把统计记下来(给状态页的仪表盘用,见 RelayLog.noteSendResult)。
+        // ⚠️ RelayEventQueue 是**单线程串行**的(它的设计就是这样,保证事件不乱序),所以这里
+        // 对 SharedPreferences 的"读-改-写"天然不会并发,不需要额外加锁。
+        queue = RelayEventQueue(sender = { envelope ->
+            val outcome = api.sendDetailed(envelope)
+            // ⚠️ 成功才在这里记。失败**不能**记在这儿:RelayEventQueue 对瞬时失败会重试
+            // (最多 4 次,指数退避),每试一次都会调 sender —— 原来把失败也记在这里,于是网络抖
+            // 一下界面上就出现"失败 3",而那条事件其实最终送出去了。失败的计数交给下面的
+            // onExhausted,由队列在重试真正用尽时回调一次。
+            if (outcome.ok) RelayLog.noteSendSuccess(applicationContext, outcome.latencyMs)
+            else lastFailureKind = when {
+                outcome.authRejected -> "auth"
+                outcome.unreachable -> "unreachable"
+                else -> "other"
+            }
+            outcome.ok
+        }, onExhausted = { envelope ->
+            // 重试用尽 = 这一条确实没送达。这里才记失败,并且把**最近一次的故障类型**留下来
+            // (401 还是连不上),让界面能给出对症的提示。
+            RelayLog.noteSendFailure(applicationContext, lastFailureKind)
+        })
         capture = QqPlaybackCapture(this, handler, ::publish)
         discovery = MacDiscoveryManager(this, { mac ->
             val expected = prefs.getString("macStableId", null)
@@ -108,6 +132,8 @@ class RelayService : Service() {
         handler.removeCallbacks(heartbeat)
         handler.post(heartbeat)
         prefs.edit().putString("ip", api.host).putInt("port", api.port).putBoolean("running", true).apply()
+        // 新一次同步从零开始计数,理由见 RelayLog.resetSendStats 的注释。
+        RelayLog.resetSendStats(this)
         RelayLog.note("relay running -> ${api.host}:${api.port}")
         return START_STICKY
     }
