@@ -13,10 +13,10 @@ android {
         targetSdk = 35
         // ⚠️ 跟 Mac 端(`LYRIMUSE_VERSION`,写进 CFBundleShortVersionString)保持同一个号:
         // 两端是**同一个产品**,版本号分叉之后用户报问题时就分不清在说哪一对组合。
-        // 0.1.2 是 2026-09-17 修完同步闪退、补上图标与实时状态的那一版。
+        // 0.1.3 是 2026-09-17 审查后的一版(离线性判据、每秒刷新开销、曲目清理)。
         // versionCode 是 Android 自己的单调递增整数,与展示版本无关,改展示版本不必动它。
-        versionCode = 2
-        versionName = "0.1.2"
+        versionCode = 3
+        versionName = "0.1.3"
     }
 
     buildTypes {
