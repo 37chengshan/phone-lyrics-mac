@@ -3,7 +3,7 @@ feature: phone-lyrics-mac
 status: delivered
 updated: 2026-09-17
 branch: feat/phone-lyrics-mac
-commits: d9e11dc..0f5d524
+commits: d9e11dc..ac8830c
 ---
 
 # Phone Lyrics Mac
