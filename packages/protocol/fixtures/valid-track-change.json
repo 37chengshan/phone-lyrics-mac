@@ -1,0 +1,1 @@
+{"protocolVersion":1,"sessionId":"session-a","sequence":1844,"event":"trackChanged","track":{"trackId":"qq-稻香-223000","title":"稻香","artist":"周杰伦","album":"魔杰座","durationMs":223000},"playback":{"state":"playing","positionMs":0,"speed":1.0,"capturedAtMonotonicMs":91833000},"source":{"packageName":"com.tencent.qqmusic","deviceId":"android-a"}}

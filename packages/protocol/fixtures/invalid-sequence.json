@@ -1,0 +1,1 @@
+{"protocolVersion":1,"sessionId":"session-a","sequence":0,"event":"heartbeat","track":{"trackId":"qq-晴天","title":"晴天","artist":"周杰伦","album":"叶惠美","durationMs":269000},"playback":{"state":"playing","positionMs":1,"speed":1.0,"capturedAtMonotonicMs":2},"source":{"packageName":"com.tencent.qqmusic","deviceId":"android-a"}}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonelyrics.local/schema/playback-envelope-v1.json",
+  "title": "Phone Lyrics Playback Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "sessionId", "sequence", "event", "track", "playback", "source"],
+  "properties": {
+    "protocolVersion": { "const": 1 },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "event": { "enum": ["trackChanged", "play", "pause", "seek", "stop", "heartbeat"] },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trackId", "title", "artist", "album", "durationMs"],
+      "properties": {
+        "trackId": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "artist": { "type": "string", "maxLength": 1024 },
+        "album": { "type": "string", "maxLength": 1024 },
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 86400000 }
+      }
+    },
+    "playback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "positionMs", "speed", "capturedAtMonotonicMs"],
+      "properties": {
+        "state": { "enum": ["playing", "paused", "stopped"] },
+        "positionMs": { "type": "integer", "minimum": 0, "maximum": 86400000 },
+        "speed": { "type": "number", "minimum": 0, "maximum": 4 },
+        "capturedAtMonotonicMs": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageName", "deviceId"],
+      "properties": {
+        "packageName": { "type": "string", "pattern": "^com\\.tencent\\.qqmusic" },
+        "deviceId": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    }
+  }
+}
