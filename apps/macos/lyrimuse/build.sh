@@ -126,6 +126,12 @@ LOG_FILE="$HOME/Library/Logs/lyrimuse.log"
 # 行为(拿不到 tag 退到 0.0.0 这个一眼假的占位值)完全一致。
 APP_VERSION="${LYRIMUSE_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)}"
 [ -z "$APP_VERSION" ] && APP_VERSION="0.0.0"
+# Sparkle 的更新源。**本 fork 默认留空** —— 理由见下面 Info.plist 里那段写在前面的注释,
+# 一句话是:上游 appcast 的版本号远高于本 fork,自动更新会拿一份不含手机播放源的包把
+# 这份覆盖掉,而用户不会把"歌词突然不同步了"跟一次早就点过的更新联想到一起。
+UPDATE_FEED="${LYRIMUSE_UPDATE_FEED:-}"
+# Info.plist 里布尔键的值。空 feed = 关掉自动检查;配了 feed = 恢复上游默认(开)。
+if [ -n "$UPDATE_FEED" ]; then SU_AUTOMATIC_CHECKS="true"; else SU_AUTOMATIC_CHECKS="false"; fi
 # CFBundleVersion(Sparkle 比大小用的构建号)由 scripts/build-version.sh 从展示版本算出 —— 映射只有那一份,
 # release.yml 生成 appcast 时从这里写进 Info.plist 的值回读、selftest 拿它跟 Core 的 ReleaseVersion 交叉校验。
 # 形态不对(既不是 X.Y.Z 也不是 X.Y.Z-alpha|beta|rc.N)在这里就失败,别让一个奇形怪状的版本号进包。
@@ -624,19 +630,27 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
             </array>
         </dict>
     </array>
+    <!-- ⚠️ 本 fork(手机歌词镜像)必须把自动更新关掉,理由不是洁癖、是**装了就会坏**:
+         这里的 SUFeedURL 指向上游 Lyrimuse 的 releases,而上游的版本号(1.7.0)远高于本 fork
+         的版本号。自动检查默认开着的话,用户装完当天就会看到"有新版本可用",一旦同意,Sparkle
+         会用上游那份**不含手机播放源**的包把这份覆盖掉 —— 表现成"用着好好的,某天歌词突然不
+         同步了",而且卸载重装也回不去,因为覆盖装的是真上游包。
+         本 fork 的分发由本仓库自己负责,不接上游 appcast。
+         要用上游的更新通道(比如做纯测试),显式传 LYRIMUSE_UPDATE_FEED=<url> 再构建。 -->
     <key>SUFeedURL</key>
-    <string>https://github.com/Yudaotor/lyrimuse/releases/latest/download/appcast.xml</string>
+    <string>${UPDATE_FEED}</string>
     <key>SUPublicEDKey</key>
     <string>xTGKkA2z7gn42F0oyb6Qe4YyL+G/RTsKu5jvvsfytTE=</string>
+    <!-- 「自动检查更新」与「自动下载安装」在**本 fork** 默认都是关的(上游默认全开)。
+         开关的值跟着上面 UPDATE_FEED 走:没配更新源就没什么可检查的,开着只会让 Sparkle
+         周期性去拉上游 appcast —— 那正是要避免的那条路径。配了 LYRIMUSE_UPDATE_FEED
+         就恢复上游默认(全开),这样将来本仓接上自己的 appcast 时不用再改这里。
+         两个键都只是**默认值**:用户在设置页手动改过之后,Sparkle 自己持久化在 UserDefaults
+         里的那份说了算,不会被这里的默认值覆盖回去,见 SparkleUpdaterManager.swift 的注释。 -->
     <key>SUEnableAutomaticChecks</key>
-    <true/>
-    <!-- "自动检查更新"开着才有意义的下一档:自动下载并安装,不用每次弹窗等用户点"安装"。
-         2026-08-31 用户要求默认开启。这两个键都只是**默认值**——跟 SUEnableAutomaticChecks
-         同一个道理,用户在设置页手动改过之后,Sparkle 自己持久化在 UserDefaults 里的那份
-         (SUAutomaticallyUpdate)说了算,不会被这里的默认值覆盖回去,见
-         SparkleUpdaterManager.swift 的注释。 -->
+    <${SU_AUTOMATIC_CHECKS}/>
     <key>SUAutomaticallyUpdate</key>
-    <true/>
+    <false/>
 </dict>
 </plist>
 PLIST
