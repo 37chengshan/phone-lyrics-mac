@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="320" viewBox="0 0 900 320" role="img" aria-label="Phone Lyrics Mac — 手机放 QQ 音乐,Mac 显示同步歌词">
+  <title>Phone Lyrics Mac</title>
+  <!--
+    首图(2026-09-17 重做)。
+
+    为什么用 SVG 而不是截图:这张图要表达的是**数据在流动**这件事 —— 手机把播放状态推出去、
+    Mac 上歌词逐字亮起。静图上这两件事都看不出来,只能靠文字解释。SVG 里的动画在 GitHub 的
+    README 里是能动的(以 <img> 加载时,CSS 动画与 SMIL 都生效,只有 <script> 和外部引用被禁),
+    所以这里一律用 SMIL <animate>,不用 JS。
+
+    ⚠️ 每个 <animate> 的元素都要写**静态属性作为初始值**:动画开始前(或者 begin 还没到)
+    浏览器用的是静态值,不写的话圆点会先出现在 cx=0 也就是画布左上角 —— 实测渲染出来就是
+    左下角飘着一个孤零零的蓝点。
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0C12"/>
+      <stop offset="0.55" stop-color="#101627"/>
+      <stop offset="1" stop-color="#0C1220"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7AA2FF"/>
+      <stop offset="1" stop-color="#A8C0FF"/>
+    </linearGradient>
+    <!-- 歌词逐字染色的推进遮罩:宽度 0→词长→保持→归零 -->
+    <clipPath id="sungClip">
+      <rect x="0" y="0" width="0" height="60">
+        <animate attributeName="width" values="0;392;392;0" keyTimes="0;0.42;0.88;1"
+                 dur="7s" repeatCount="indefinite"/>
+      </rect>
+    </clipPath>
+    <filter id="softglow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="900" height="320" rx="18" fill="url(#bg)"/>
+  <rect x="0.75" y="0.75" width="898.5" height="318.5" rx="18" fill="none" stroke="#1E2636" stroke-width="1.5"/>
+
+  <!-- ── 标题区 ── -->
+  <g font-family="PingFang SC, -apple-system, Helvetica Neue, Segoe UI, sans-serif">
+    <text x="56" y="78" font-size="35" font-weight="600" fill="#EEF1F5" letter-spacing="0.3">Phone Lyrics Mac</text>
+    <text x="56" y="110" font-size="15" fill="#8B93A1">手机放 QQ 音乐 · Mac 显示同步歌词</text>
+  </g>
+
+  <!-- 右上角的状态胶囊(呼吸的绿点 = 在线) -->
+  <g transform="translate(700 58)">
+    <rect width="144" height="34" rx="17" fill="#12202A" stroke="#1E3A32" stroke-width="1"/>
+    <circle cx="22" cy="17" r="4.5" fill="#3DD68C">
+      <animate attributeName="opacity" values="1;0.3;1" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="22" cy="17" r="4.5" fill="#3DD68C" opacity="0.35">
+      <animate attributeName="r" values="4.5;9;4.5" dur="2.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.35;0;0.35" dur="2.2s" repeatCount="indefinite"/>
+    </circle>
+    <text x="38" y="22" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+          font-size="13" font-weight="500" fill="#5FD9A0">已连接</text>
+  </g>
+
+  <!-- ── 手机 ── -->
+  <g transform="translate(56 152)">
+    <rect width="58" height="104" rx="11" fill="#0E1219" stroke="#2A3242" stroke-width="2"/>
+    <rect x="7" y="14" width="44" height="68" rx="5" fill="#080A0F"/>
+    <!-- 屏内跳动的波形:表示正在播放 -->
+    <g fill="url(#accent)" transform="translate(7 14)">
+      <rect x="7" y="26" width="4.5" height="16" rx="2.25">
+        <animate attributeName="height" values="9;26;9" dur="1.15s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="29.5;20;29.5" dur="1.15s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="16" y="20" width="4.5" height="28" rx="2.25">
+        <animate attributeName="height" values="28;10;28" dur="0.92s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="20;29;20" dur="0.92s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="25" y="24" width="4.5" height="20" rx="2.25">
+        <animate attributeName="height" values="16;30;16" dur="1.35s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="26;19;26" dur="1.35s" repeatCount="indefinite"/>
+      </rect>
+      <rect x="34" y="27" width="4.5" height="14" rx="2.25">
+        <animate attributeName="height" values="20;10;20" dur="1.05s" repeatCount="indefinite"/>
+        <animate attributeName="y" values="24;29;24" dur="1.05s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+  </g>
+  <text x="85" y="278" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="11.5" fill="#5C6470" text-anchor="middle">Android · QQ 音乐</text>
+
+  <!-- ── 传输链路:虚线 + 三个流动的光点 ── -->
+  <line x1="126" y1="204" x2="318" y2="204" stroke="#232C3E" stroke-width="1.5" stroke-dasharray="5 7">
+    <animate attributeName="stroke-dashoffset" values="0;-24" dur="1.1s" repeatCount="indefinite"/>
+  </line>
+  <g fill="#7AA2FF">
+    <circle cx="126" cy="204" r="3.5" opacity="0">
+      <animate attributeName="cx" values="126;318" dur="1.9s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.8;1" dur="1.9s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="126" cy="204" r="3.5" opacity="0">
+      <animate attributeName="cx" values="126;318" dur="1.9s" begin="0.63s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.8;1" dur="1.9s" begin="0.63s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="126" cy="204" r="3.5" opacity="0">
+      <animate attributeName="cx" values="126;318" dur="1.9s" begin="1.26s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.12;0.8;1" dur="1.9s" begin="1.26s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  <text x="222" y="188" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="10.5" fill="#4B5464" text-anchor="middle">局域网 · 每秒心跳</text>
+
+  <!-- ── Mac 上的悬浮歌词窗 ── -->
+  <g transform="translate(318 158)">
+    <rect width="526" height="92" rx="14" fill="#141926" stroke="#26304A" stroke-width="1.5"/>
+    <!-- 歌名行 -->
+    <text x="26" y="26" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+          font-size="11.5" fill="#5C6470">晴天 · 周杰伦</text>
+    <!-- 未唱到的歌词 -->
+    <text x="26" y="58" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+          font-size="21" fill="#3F4859">这一刻的歌词正在被点亮</text>
+    <!-- 已唱到的部分:同一句话压在上面,用 clip 从左往右揭开 -->
+    <g clip-path="url(#sungClip)">
+      <text x="26" y="58" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+            font-size="21" font-weight="600" fill="#EEF1F5" filter="url(#softglow)">这一刻的歌词正在被点亮</text>
+    </g>
+    <!-- 进度条 -->
+    <rect x="26" y="74" width="474" height="3" rx="1.5" fill="#1E2636"/>
+    <rect x="26" y="74" width="0" height="3" rx="1.5" fill="url(#accent)">
+      <animate attributeName="width" values="0;474;474;0" keyTimes="0;0.42;0.88;1" dur="7s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+  <text x="581" y="278" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="11.5" fill="#5C6470" text-anchor="middle">macOS 14+ · 悬浮歌词 / 菜单栏 / 灵动岛</text>
+
+  <!-- ── 底部一句话 ── -->
+  <!-- ⚠️ 这句话原来摆在左下角 (x=56 y=278),跟手机标签 "Android · QQ 音乐" 撞在同一行,
+       渲染出来是一团糊字(实测)。挪到底部居中单独一行,跟两个标签错开。 -->
+  <text x="450" y="304" font-family="PingFang SC, -apple-system, Helvetica Neue, sans-serif"
+        font-size="11.5" fill="#4B5464" text-anchor="middle">单向同步 · Mac 只显示,不控制手机</text>
+</svg>
