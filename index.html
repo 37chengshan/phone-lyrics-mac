@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>手机歌词镜像 · 浏览器演示</title>
+    <link rel="stylesheet" href="src/settings/styles.css" />
+    <link rel="stylesheet" href="src/overlay/styles.css" />
+    <style>
+      body.demo-shell {
+        background:
+          radial-gradient(1200px 600px at 10% -10%, #1b2a4a 0%, transparent 55%),
+          radial-gradient(900px 500px at 100% 0%, #1a2f28 0%, transparent 50%),
+          #0b0d12;
+        min-height: 100vh;
+      }
+      .layout {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 28px 20px 80px;
+        display: grid;
+        grid-template-columns: 420px 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+      @media (max-width: 860px) {
+        .layout { grid-template-columns: 1fr; }
+      }
+      .preview-pane {
+        position: sticky;
+        top: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .stage {
+        border: 1px dashed #334155;
+        border-radius: 16px;
+        min-height: 220px;
+        padding: 24px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+        display: flex;
+        align-items: flex-end;
+      }
+      .float {
+        width: 100%;
+        height: auto;
+        min-height: 72px;
+      }
+      .float.rows-2 { min-height: 120px; }
+      .tips {
+        color: #8b93a1;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .app {
+        background: transparent;
+        border: 1px solid #262b35;
+        border-radius: 16px;
+        background: #12151c;
+      }
+      h1.page {
+        grid-column: 1 / -1;
+        font-size: 22px;
+        margin: 0;
+      }
+      .page-sub {
+        grid-column: 1 / -1;
+        margin: -10px 0 0;
+        color: #8b93a1;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body class="demo-shell">
+    <div class="layout">
+      <h1 class="page">手机歌词镜像 · 浏览器演示</h1>
+      <p class="page-sub">同一套 UI：左侧设置，右侧悬浮歌词预览。Electron 版会在菜单栏常驻。</p>
+
+      <section class="app">
+        <main class="app" style="border:0;background:transparent">
+          <header>
+            <h1 style="font-size:16px">设置</h1>
+            <p class="sub">连接状态 · 连接选项 · 歌词外观</p>
+          </header>
+
+          <section class="card">
+            <div class="row">
+              <span class="label">手机连接</span>
+              <span id="conn-badge" class="badge on">演示中</span>
+            </div>
+            <div class="meta" id="conn-meta">演示模式：内置示例歌词滚动</div>
+            <div class="ips" id="ips">浏览器演示不监听端口；Electron 版显示 LAN IP</div>
+          </section>
+
+          <section class="card">
+            <h2>连接选项</h2>
+            <label class="field">
+              <span>监听端口（仅 Electron）</span>
+              <input id="port" type="number" value="8765" disabled />
+            </label>
+            <p class="hint">协议：POST <code>/api/now-playing</code> JSON，字段 title/artist/durationMs/positionMs/state</p>
+          </section>
+
+          <section class="card">
+            <h2>歌词外观</h2>
+            <label class="field">
+              <span>字号 <b id="font-val">28</b>px</span>
+              <input id="font" type="range" min="16" max="48" value="28" />
+            </label>
+            <div class="field row">
+              <span>排版</span>
+              <div class="seg">
+                <button id="rows1" class="seg-btn">单行</button>
+                <button id="rows2" class="seg-btn active">双行</button>
+              </div>
+            </div>
+            <label class="field row">
+              <span>锁定窗口（演示：禁用拖动）</span>
+              <input id="lock" type="checkbox" />
+            </label>
+            <label class="field">
+              <span>透明度 <b id="op-val">92</b>%</span>
+              <input id="opacity" type="range" min="40" max="100" value="92" />
+            </label>
+            <label class="field row">
+              <span>演示模式</span>
+              <input id="demo" type="checkbox" checked />
+            </label>
+          </section>
+        </main>
+      </section>
+
+      <aside class="preview-pane">
+        <div class="stage">
+          <div id="float" class="root rows-2 float">
+            <div id="current" class="line current">演示模式：手机歌词镜像</div>
+            <div id="next" class="line next">Mac 不播放声音，只同步桌面歌词</div>
+          </div>
+        </div>
+        <p class="tips">
+          拖动预览条可移动（未锁定）。完整桌面版：<code>npm start</code>。
+          Android 中继源码在 <code>android/PhoneLyricsRelay</code>。
+        </p>
+      </aside>
+    </div>
+    <script>
+      const DEMO = [
+        [0, '演示模式：手机歌词镜像', 'Mac 不播放声音，只同步桌面歌词'],
+        [4, '打开 Android 中继，填入 Mac IP', '手机热点同网段即可实时对齐'],
+        [9, '支持单行 / 双行、字号、锁定', '菜单栏常驻，无需打开主窗口'],
+        [14, '实时传输：MediaSession → HTTP', 'Mac 拉取 LRC 并按进度对齐'],
+        [20, '— demo line 5 —', '— demo line 6 —'],
+        [26, '— demo line 7 —', '— demo line 8 —'],
+        [32, '循环演示结束，从头开始', '演示模式：手机歌词镜像'],
+      ];
+
+      const state = {
+        fontSize: 28,
+        rows: 2,
+        locked: false,
+        opacity: 0.92,
+        demo: true,
+        t0: Date.now(),
+      };
+
+      const floatEl = document.getElementById('float');
+      const currentEl = document.getElementById('current');
+      const nextEl = document.getElementById('next');
+
+      let drag = null;
+
+      floatEl.addEventListener('pointerdown', (e) => {
+        if (state.locked) return;
+        drag = { x: e.clientX, y: e.clientY, mx: floatEl.offsetLeft, my: floatEl.offsetTop };
+        floatEl.setPointerCapture(e.pointerId);
+      });
+      floatEl.addEventListener('pointermove', (e) => {
+        if (!drag) return;
+        floatEl.style.transform = `translate(${e.clientX - drag.x}px, ${e.clientY - drag.y}px)`;
+      });
+      floatEl.addEventListener('pointerup', () => {
+        if (!drag) return;
+        const m = new DOMMatrix(getComputedStyle(floatEl).transform);
+        const rect = floatEl.getBoundingClientRect();
+        const stage = floatEl.parentElement.getBoundingClientRect();
+        floatEl.style.transform = '';
+        floatEl.style.marginLeft = `${rect.left - stage.left + m.e}px`;
+        floatEl.style.marginTop = `${rect.top - stage.top + m.f}px`;
+        drag = null;
+      });
+
+      function apply() {
+        floatEl.classList.toggle('rows-1', state.rows === 1);
+        floatEl.classList.toggle('rows-2', state.rows === 2);
+        floatEl.classList.toggle('locked', state.locked);
+        floatEl.style.opacity = String(state.opacity);
+        currentEl.style.fontSize = `${state.fontSize}px`;
+        nextEl.style.fontSize = `${Math.max(12, Math.round(state.fontSize * 0.72))}px`;
+      }
+
+      function tick() {
+        if (!state.demo) return;
+        const elapsed = (Date.now() - state.t0) / 1000;
+        const span = DEMO[DEMO.length - 1][0] + 6;
+        const t = elapsed % span;
+        let idx = 0;
+        for (let i = 0; i < DEMO.length; i++) if (t >= DEMO[i][0]) idx = i;
+        currentEl.textContent = DEMO[idx][1];
+        nextEl.textContent = DEMO[idx][2];
+      }
+
+      document.getElementById('font').addEventListener('input', (e) => {
+        state.fontSize = Number(e.target.value);
+        document.getElementById('font-val').textContent = state.fontSize;
+        apply();
+      });
+      document.getElementById('opacity').addEventListener('input', (e) => {
+        state.opacity = Number(e.target.value) / 100;
+        document.getElementById('op-val').textContent = e.target.value;
+        apply();
+      });
+      document.getElementById('lock').addEventListener('change', (e) => {
+        state.locked = e.target.checked;
+        apply();
+      });
+      document.getElementById('rows1').addEventListener('click', () => {
+        state.rows = 1;
+        document.getElementById('rows1').classList.add('active');
+        document.getElementById('rows2').classList.remove('active');
+        apply();
+      });
+      document.getElementById('rows2').addEventListener('click', () => {
+        state.rows = 2;
+        document.getElementById('rows2').classList.add('active');
+        document.getElementById('rows1').classList.remove('active');
+        apply();
+      });
+      document.getElementById('demo').addEventListener('change', (e) => {
+        state.demo = e.target.checked;
+        if (state.demo) state.t0 = Date.now();
+        document.getElementById('conn-badge').textContent = state.demo ? '演示中' : '已暂停';
+        document.getElementById('conn-badge').className = `badge ${state.demo ? 'on' : 'off'}`;
+      });
+
+      apply();
+      setInterval(tick, 100);
+      tick();
+    </script>
+  </body>
+</html>

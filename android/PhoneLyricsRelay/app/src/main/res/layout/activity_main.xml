@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:gap="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="手机歌词中继"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="读取系统正在播放（QQ 音乐等），HTTP 推送到 Mac"
+        android:textSize="13sp" />
+
+    <EditText
+        android:id="@+id/macIp"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Mac IP，例如 172.20.10.2"
+        android:inputType="textUri" />
+
+    <EditText
+        android:id="@+id/macPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="端口"
+        android:inputType="number"
+        android:text="8765" />
+
+    <Button
+        android:id="@+id/toggle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="启动中继" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="未启动"
+        android:textSize="13sp" />
+</LinearLayout>

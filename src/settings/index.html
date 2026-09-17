@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>手机歌词镜像</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>手机歌词镜像</h1>
+        <p class="sub">手机放 QQ 音乐 · Mac 只显示歌词</p>
+      </header>
+
+      <section class="card">
+        <div class="row">
+          <span class="label">手机连接</span>
+          <span id="conn-badge" class="badge off">离线</span>
+        </div>
+        <div class="meta" id="conn-meta">等待设备上报…</div>
+        <div class="ips" id="ips"></div>
+      </section>
+
+      <section class="card">
+        <h2>连接选项</h2>
+        <label class="field">
+          <span>监听端口</span>
+          <input id="port" type="number" min="1024" max="65535" value="8765" />
+        </label>
+        <button id="btn-restart" class="btn">重启监听服务</button>
+        <p class="hint">手机填 Mac 的局域网 IP，路径 <code>/api/now-playing</code></p>
+      </section>
+
+      <section class="card">
+        <h2>歌词外观</h2>
+        <label class="field">
+          <span>字号 <b id="font-val">28</b>px</span>
+          <input id="font" type="range" min="16" max="48" value="28" />
+        </label>
+        <div class="field row">
+          <span>排版</span>
+          <div class="seg">
+            <button id="rows1" class="seg-btn">单行</button>
+            <button id="rows2" class="seg-btn">双行</button>
+          </div>
+        </div>
+        <label class="field row">
+          <span>锁定窗口</span>
+          <input id="lock" type="checkbox" />
+        </label>
+        <label class="field">
+          <span>透明度 <b id="op-val">92</b>%</span>
+          <input id="opacity" type="range" min="40" max="100" value="92" />
+        </label>
+        <label class="field row">
+          <span>演示模式</span>
+          <input id="demo" type="checkbox" />
+        </label>
+      </section>
+
+      <footer>
+        <button id="btn-hide" class="btn ghost">隐藏歌词窗</button>
+        <span id="lyric-src" class="muted"></span>
+      </footer>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

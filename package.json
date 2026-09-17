@@ -1,0 +1,14 @@
+{
+  "name": "phone-lyrics-mac",
+  "version": "0.1.0",
+  "description": "手机 QQ 音乐 → Mac 桌面悬浮歌词（菜单栏常驻）",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "demo": "python3 -m http.server 5173",
+    "test:lrc": "node scripts/test-lrc.js"
+  },
+  "dependencies": {
+    "electron": "^33.2.0"
+  }
+}
