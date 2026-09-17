@@ -2967,6 +2967,12 @@ private struct PhoneSettingsTab: View {
                 ) { EmptyView() }
             }
 
+            // 后台采集服务:手机模式下这一环**不可少** —— 它读手机快照做歌词解析、翻译、
+            // 罗马音和封面抓取。这张卡原来只住在「播放器」页里,而那一页已经被这一页整页替掉,
+            // 服务真挂了的时候用户没有任何入口能救回来,所以搬过来共用同一份实现
+            // (见 CollectorStatusCard 头注)。
+            CollectorStatusCard()
+
             SettingsCard {
                 SettingsCardHeader(title: L10n.t("配对"))
                 if let code = service.pairingCode, code.expiresAt > Date() {
