@@ -29,19 +29,35 @@ npm install
 npm start          # 菜单栏图标 + 设置窗 + 悬浮歌词窗
 ```
 
+一键装到「应用程序」（双击启动，菜单栏常驻）：
+
+```bash
+bash packaging/install-mac-app.sh
+# → /Applications/手机歌词镜像.app
+# 首次打开若被拦截：右键 → 打开
+```
+
+或在项目根目录双击 `启动.command`。
+
 浏览器预览同一套 UI（无托盘/无真实监听）：
 
 ```bash
 open index.html
-# 或 python3 -m http.server 5173
 ```
 
 ### 2. Android 中继
 
-1. 用 Android Studio 打开 `android/PhoneLyricsRelay`
-2. 安装到手机（需 **设置 → 通知使用权** 授予「歌词中继」）
-3. Mac 与手机同一热点；在 App 填入设置页显示的 IP（热点下常见 `172.20.10.x`）
-4. 启动中继 → 手机播 QQ 音乐 → Mac 悬浮窗跟词
+**已构建调试包**（本机）：`dist/PhoneLyricsRelay-debug.apk`
+
+```bash
+adb install -r dist/PhoneLyricsRelay-debug.apk
+```
+
+或用 Android Studio 打开 `android/PhoneLyricsRelay` 自行构建。
+
+1. 安装后：**设置 → 通知使用权** 授予「歌词中继」
+2. Mac 与手机同一热点；填入 Mac 设置页显示的 IP（热点常见 `172.20.10.x`）
+3. 启动中继 → 手机播 QQ 音乐 → Mac 悬浮窗跟词
 
 ### 3. 协议
 

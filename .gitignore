@@ -5,3 +5,5 @@ dist/
 android/PhoneLyricsRelay/.gradle/
 android/PhoneLyricsRelay/**/build/
 android/PhoneLyricsRelay/local.properties
+android/PhoneLyricsRelay/gradle/wrapper/gradle-wrapper.jar
+

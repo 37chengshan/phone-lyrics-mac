@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+# packaging/mac/PhoneLyrics镜像.app/Contents/MacOS → repo root is 4 levels up
+APP_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+ELECTRON="$APP_ROOT/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+if [[ ! -x "$ELECTRON" ]]; then
+  osascript -e 'display alert "缺少 Electron" message "请先在项目目录执行: npm install"'
+  exit 1
+fi
+cd "$APP_ROOT"
+exec "$ELECTRON" "$APP_ROOT"
