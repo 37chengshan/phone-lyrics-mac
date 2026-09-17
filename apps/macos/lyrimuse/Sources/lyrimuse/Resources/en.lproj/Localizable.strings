@@ -399,6 +399,7 @@
 "固定" = "Fixed";
 "在 %@ 中显示" = "Show in %@";
 "在 %@ 播放任意歌曲，歌词会自动出现" = "Play something in %@ and lyrics will appear here";
+"在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。" = "Enter this 6-digit code in the Android app. It is valid for 5 minutes and reconnects automatically once paired.";
 "在 Apple Music 中打开" = "Open in Apple Music";
 "在 Apple Music 播放任意歌曲，歌词会自动出现" = "Play something in Apple Music and lyrics will appear here";
 "在 Arc 菜单栏依次打开「View → Developer → Allow JavaScript from Apple Events」。Arc 的这几个菜单项在中文系统下也是英文。" = "In Arc’s menu bar: View → Developer → Allow JavaScript from Apple Events.";
@@ -546,6 +547,8 @@
 "已连接：%@" = "Connected: %@";
 "已选 %@ 首" = "%@ selected";
 "已选择 %@ 首" = "%@ Songs Selected";
+"已通过 Bonjour 发布" = "Published via Bonjour";
+"已配对设备" = "Paired Devices";
 "已配置好，点开可查看或移除" = "All set — click to review or remove";
 "已采用" = "Applied";
 "已采用 %@ 的歌词" = "Now using lyrics from %@";
@@ -618,7 +621,13 @@
 "截屏/录屏时隐藏" = "Hide During Screenshots/Recording";
 "所有候选都相同的项：%@" = "Terms identical on every candidate: %@";
 "所有屏幕" = "All Displays";
+"手动连接备用地址" = "Manual Address Fallback";
 "手动重新匹配" = "Manual re-match";
+"手机 QQ 音乐" = "QQ Music on Phone";
+"手机已离线" = "Phone Offline";
+"手机已连接" = "Phone Connected";
+"手机是唯一播放源；Mac 只同步显示，不会控制手机。" = "Your phone is the only playback source. This Mac mirrors it and never controls it.";
+"手机连接" = "Phone Connection";
 "打开" = "Open";
 "打开 %@" = "Open %@";
 "打开 %@ 时启动 Lyrimuse" = "Launch Lyrimuse when %@ opens";
@@ -658,6 +667,7 @@
 "按住 ⌘ 拖拽这个图标，可以把它移动到菜单栏里你喜欢的位置。" = "Hold ⌘ and drag this icon to move it anywhere in the menu bar.";
 "按住歌词即可拖动位置" = "Hold the lyrics to reposition";
 "挑一个用来播放这个网站的浏览器" = "Pick the browser you use for this site";
+"换一个新配对码" = "Generate a New Code";
 "换一个组合——否则 Lyrimuse 在前台时，按下它会同时触发菜单里的那一项。" = "Pick a different combination — otherwise, while Lyrimuse is frontmost, pressing it also triggers that menu item.";
 "换一个组合。系统占用的组合注册不上，录进去也不会生效；要用它得先到「系统设置 → 键盘 → 键盘快捷键」里把系统那一项关掉。" = "Pick a different combination. Combinations reserved by the system cannot be registered, so recording one has no effect; to use it, first turn off the system shortcut in System Settings → Keyboard → Keyboard Shortcuts.";
 "换一个组合，或者先清除那一项。" = "Pick a different combination, or clear that one first.";
@@ -811,6 +821,7 @@
 "服务器报错（5xx）：%@" = "Server error (5xx): %@";
 "服务器报错（HTTP 5xx），稍后重试通常会恢复" = "Server error (HTTP 5xx); retrying later usually works";
 "服务器设置 → 整合(Integrations) → Webhook → 新建 Webhook，选好要发到的频道后复制 Webhook URL" = "Server Settings → Integrations → Webhooks → New Webhook. Pick the channel to post to, then copy the Webhook URL";
+"服务正在启动或等待网络" = "Starting up or waiting for the network";
 "未勾选，此项关闭" = "None checked, this is off";
 "未取到" = "Not loaded";
 "未启用" = "Not Enabled";
@@ -1013,6 +1024,7 @@
 "状态栏宽度有限，歌词可能被截断；鼠标悬停在上面永远能看到完整的这一行" = "The menu bar is narrow so the line may be truncated; hovering always shows it in full";
 "现在去设置里连接" = "Connect Now in Settings";
 "现在没有在播放——桌面悬浮歌词会立刻出现，灵动岛和菜单栏歌词要等开始播放才看得到" = "Nothing is playing right now — Desktop Floating Lyrics appears straight away; Notch Lyrics and Menu Bar Lyrics only show up once playback starts";
+"生成配对码" = "Generate Pairing Code";
 "用户名（听歌报告需要）" = "Username (needed for listening digests)";
 "用户名（选填，用于界面显示）" = "Username (optional, for display only)";
 "用来把当前播放状态推送到网页小组件和状态徽章" = "Pushes the current playback status to the web widget and status badge";
@@ -1050,6 +1062,7 @@
 "第 %@ 次听" = "Play #%@";
 "第三方许可" = "Third-party licenses";
 "等待 Last.fm 确认（通常几秒内）" = "Waiting for Last.fm to acknowledge (usually a few seconds)";
+"等待手机" = "Waiting for Phone";
 "签名密钥（可选）" = "Signature Secret (Optional)";
 "简体" = "Simplified";
 "简体中文" = "简体中文";
@@ -1115,6 +1128,8 @@
 "自 %@ 起" = "Since %@";
 "自动" = "Automatic";
 "自动下载并安装" = "Download and Install Automatically";
+"自动发现" = "Automatic Discovery";
+"自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。" = "When discovery is unavailable, enter any address below in the Android app while both devices share the same Wi-Fi.";
 "自动开启失败，请到该浏览器「查看→开发者」菜单里手动打开" = "Automatic enable failed — please turn it on manually from this browser's View → Developer menu";
 "自动更新" = "Automatic Updates";
 "自动检查" = "Check Automatically";
@@ -1320,10 +1335,12 @@
 "连接 Last.fm" = "Connect Last.fm";
 "连接 Last.fm 账号" = "Connect Last.fm Account";
 "连接 Last.fm…" = "Connect Last.fm…";
+"连接不稳定" = "Unstable Connection";
 "连接信息" = "Connection Info";
 "连接后这里会展示你的听歌档案" = "Once connected, your listening profile shows up here";
 "连接失败或超时，没有拿到任何响应" = "Connection failed or timed out with no response";
 "连接失败或超时：%@" = "Connection failed or timed out: %@";
+"连接新手机" = "Connect a New Phone";
 "连接账号…" = "Connect account…";
 "退出 Lyrimuse" = "Quit Lyrimuse";
 "退出全屏" = "Exit Full Screen";
@@ -1351,6 +1368,8 @@
 "那年今日" = "On This Day";
 "那年今日 · %1$@ 年前听了 %2$@ 首" = "On this day · %2$@ plays %1$@ year(s) ago";
 "部分写法没取到" = "Some spellings couldn't be loaded";
+"配对" = "Pairing";
+"配对码只使用一次，设备令牌保存在系统安全存储中。" = "Each pairing code works once. Device tokens are kept in the system secure storage.";
 "配置文件 %@ 无法读取，为避免覆盖，所有保存已暂停" = "The configuration file %@ can't be read. Saving is paused so it won't be overwritten.";
 "配置文件夹" = "Config Folder";
 "配置文件无法解析，为避免覆盖已放弃保存" = "The configuration file can't be parsed; saving was skipped so it won't be overwritten";

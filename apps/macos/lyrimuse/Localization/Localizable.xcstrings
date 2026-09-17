@@ -1,26 +1,466 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
-    "手机连接" : { "extractionState" : "manual" },
-    "手机 QQ 音乐" : { "extractionState" : "manual" },
-    "手机是唯一播放源；Mac 只同步显示，不会控制手机。" : { "extractionState" : "manual" },
-    "自动发现" : { "extractionState" : "manual" },
-    "已通过 Bonjour 发布" : { "extractionState" : "manual" },
-    "服务正在启动或等待网络" : { "extractionState" : "manual" },
-    "配对" : { "extractionState" : "manual" },
-    "连接新手机" : { "extractionState" : "manual" },
-    "配对码只使用一次，设备令牌保存在系统安全存储中。" : { "extractionState" : "manual" },
-    "生成配对码" : { "extractionState" : "manual" },
-    "在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。" : { "extractionState" : "manual" },
-    "换一个新配对码" : { "extractionState" : "manual" },
-    "手动连接备用地址" : { "extractionState" : "manual" },
-    "自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。" : { "extractionState" : "manual" },
-    "已配对设备" : { "extractionState" : "manual" },
-    "移除" : { "extractionState" : "manual" },
-    "等待手机" : { "extractionState" : "manual" },
-    "手机已连接" : { "extractionState" : "manual" },
-    "连接不稳定" : { "extractionState" : "manual" },
-    "手机已离线" : { "extractionState" : "manual" },
+    "手机连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phone Connection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機連線"
+          }
+        }
+      }
+    },
+    "手机 QQ 音乐" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QQ Music on Phone"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机 QQ 音乐"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機 QQ 音樂"
+          }
+        }
+      }
+    },
+    "手机是唯一播放源；Mac 只同步显示，不会控制手机。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your phone is the only playback source. This Mac mirrors it and never controls it."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机是唯一播放源；Mac 只同步显示，不会控制手机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機是唯一播放來源；Mac 只同步顯示，不會控制手機。"
+          }
+        }
+      }
+    },
+    "自动发现" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic Discovery"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动发现"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動探索"
+          }
+        }
+      }
+    },
+    "已通过 Bonjour 发布" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Published via Bonjour"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已通过 Bonjour 发布"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已透過 Bonjour 發佈"
+          }
+        }
+      }
+    },
+    "服务正在启动或等待网络" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Starting up or waiting for the network"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务正在启动或等待网络"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服務正在啟動或等待網路"
+          }
+        }
+      }
+    },
+    "配对" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pairing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配對"
+          }
+        }
+      }
+    },
+    "连接新手机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect a New Phone"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接新手机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接新手機"
+          }
+        }
+      }
+    },
+    "配对码只使用一次，设备令牌保存在系统安全存储中。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each pairing code works once. Device tokens are kept in the system secure storage."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对码只使用一次，设备令牌保存在系统安全存储中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配對碼只使用一次，裝置權杖儲存在系統安全儲存中。"
+          }
+        }
+      }
+    },
+    "生成配对码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generate Pairing Code"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "生成配对码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "產生配對碼"
+          }
+        }
+      }
+    },
+    "在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter this 6-digit code in the Android app. It is valid for 5 minutes and reconnects automatically once paired."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Android 端输入此 6 位码。5 分钟内有效，成功后自动重连。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Android 端輸入此 6 位碼。5 分鐘內有效，成功後會自動重新連線。"
+          }
+        }
+      }
+    },
+    "换一个新配对码" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generate a New Code"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "换一个新配对码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "換一個新配對碼"
+          }
+        }
+      }
+    },
+    "手动连接备用地址" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manual Address Fallback"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手动连接备用地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手動連線備用位址"
+          }
+        }
+      }
+    },
+    "自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When discovery is unavailable, enter any address below in the Android app while both devices share the same Wi-Fi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动发现不可用时，可将同一 Wi-Fi 下的任一地址填到 Android 端。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動探索無法使用時，可將同一 Wi-Fi 下的任一位址填入 Android 端。"
+          }
+        }
+      }
+    },
+    "已配对设备" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paired Devices"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配对设备"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配對裝置"
+          }
+        }
+      }
+    },
+    "移除" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除"
+          }
+        }
+      }
+    },
+    "等待手机" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for Phone"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待手机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待手機"
+          }
+        }
+      }
+    },
+    "手机已连接" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phone Connected"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机已连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機已連線"
+          }
+        }
+      }
+    },
+    "连接不稳定" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unstable Connection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接不稳定"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線不穩定"
+          }
+        }
+      }
+    },
+    "手机已离线" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phone Offline"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手机已离线"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "手機已離線"
+          }
+        }
+      }
+    },
     "搜索设置" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18468,29 +18908,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "秒"
-          }
-        }
-      }
-    },
-    "移除" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移除"
           }
         }
       }
