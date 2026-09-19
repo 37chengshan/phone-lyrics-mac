@@ -14,6 +14,10 @@ class QqPlaybackCapture(context: Context, private val callbackHandler: Handler,
     private val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
     private val listenerComponent = ComponentName(context, NotificationListener::class.java)
     private var controller: MediaController? = null
+    /// 元数据矫正器(2026-09-19)。QQ 音乐开「通知栏显示歌词」时会把歌词行塞进 TITLE、
+    /// 把「歌名-歌手」塞进 ARTIST,直接发出去会让 Mac 永远搜不到歌词。判定与解析的完整
+    /// 来龙去脉见 QqMetadataResolver 的头注。
+    private val resolver = QqMetadataResolver()
     private val controllerCallback = object : MediaController.Callback() {
         override fun onPlaybackStateChanged(state: PlaybackState?) { currentSnapshot()?.let(onChanged) }
         override fun onMetadataChanged(metadata: MediaMetadata?) { currentSnapshot()?.let(onChanged) }
@@ -42,6 +46,9 @@ class QqPlaybackCapture(context: Context, private val callbackHandler: Handler,
             ?: metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)).orEmpty().trim()
         val album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM).orEmpty().trim()
         val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0)
+        // 先让矫正器看一眼:它在"通知栏歌词"模式下会把歌名/歌手拆正,并给出一个
+        // **不会被歌词行带跑**的曲目身份(见 QqMetadataResolver.resolve 的注释)。
+        val fixed = resolver.resolve(title, artist, album, duration)
         val state = c.playbackState
         val wireState = when (state?.state) {
             PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING -> WirePlaybackState.PLAYING
@@ -53,8 +60,11 @@ class QqPlaybackCapture(context: Context, private val callbackHandler: Handler,
         val rawPosition = (state?.position ?: 0).coerceAtLeast(0)
         val position = if (wireState == WirePlaybackState.PLAYING) rawPosition + (age * speed).toLong() else rawPosition
         val mediaId = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)?.trim().orEmpty()
-        val trackId = mediaId.ifEmpty { "$artist|$title|$album|$duration" }
-        return QqPlaybackSnapshot(trackId, title, artist, album, duration,
+        // ⚠️ 身份优先用 mediaId(QQ 音乐会给,且跟显示无关);没有才用矫正器算的那个。
+        // **绝不能**退回含 TITLE 的旧公式 —— 歌词模式下 TITLE 每几秒变一次,那种标识会让
+        // Mac 以为一直在换歌,刚搜到的歌词立刻被清空(这正是本次故障的另一半)。
+        val trackId = mediaId.ifEmpty { fixed.identity }
+        return QqPlaybackSnapshot(trackId, fixed.title, fixed.artist, album, duration,
             position.coerceAtMost(if (duration > 0) duration else Long.MAX_VALUE), wireState, speed,
             c.packageName, nowMs)
     }
