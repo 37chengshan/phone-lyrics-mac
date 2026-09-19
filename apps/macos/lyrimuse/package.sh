@@ -63,6 +63,28 @@ VARIANTS=(
   "-intel|--universal --dest|arm64 x86_64"
 )
 
+# --primary-only:只出主包(arm64)。
+#
+# 为什么需要这个开关:Intel 兼容包要求**每一个**嵌进来的 Mach-O 都带 x86_64,而
+# media-control(第三方,ungive/media-control,读系统播放状态用)**只发布 arm64 二进制**。
+# 于是 -intel 那一步必然在架构闸门上失败,连带整个 package.sh 退出 —— 主包明明已经构建好了,
+# 却一个产物都拿不到。
+#
+# ⚠️ 这个开关**不是**用来绕过闸门的:闸门本身是对的,它拦住了一个真的不完整的包。这里只是
+# 把"能发的部分发出去"和"发不了的部分"分开,Intel 用户暂时没有兼容包(README 里说明)。
+# 上游哪天出了 universal 的 media-control,去掉这个开关即可,其余代码不用动。
+PRIMARY_ONLY=0
+for arg in "$@"; do
+  case "$arg" in
+    --primary-only) PRIMARY_ONLY=1 ;;
+    *) echo "!! 未知参数:$arg(可用:--primary-only)" >&2; exit 2 ;;
+  esac
+done
+if [ "$PRIMARY_ONLY" = 1 ]; then
+  VARIANTS=("|--dest|arm64")
+  echo "==> --primary-only:只构建主包(Intel 包需要 universal 的 media-control,上游只发 arm64)"
+fi
+
 echo "==> building variants"
 VERSION=""
 for v in "${VARIANTS[@]}"; do

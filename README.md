@@ -10,7 +10,7 @@
 <br>
 
 [![License](https://img.shields.io/badge/License-GPL--3.0-7AA2FF)](LICENSE)
-[![macOS](https://img.shields.io/badge/macOS-14%2B-EEF1F5)](#环境要求) [![Android](https://img.shields.io/badge/Android-8.0%2B-3DD68C)](#环境要求) [![Tests](https://img.shields.io/badge/tests-4458%20assertions-5FD9A0)](#验证)
+[![macOS](https://img.shields.io/badge/macOS-14%2B-EEF1F5)](#环境要求) [![Android](https://img.shields.io/badge/Android-8.0%2B-3DD68C)](#环境要求) [![Tests](https://img.shields.io/badge/tests-4482%20assertions-5FD9A0)](#验证)
 
 </div>
 
@@ -87,6 +87,31 @@ Mac 上不运行任何音乐播放器。手机通过局域网把播放状态推�
 2. **传输** —— 事件进一个单线程有序队列,用设备令牌鉴权,通过局域网推给 Mac。
    序号严格递增,乱序会被 Mac 丢弃;重试保持原顺序。
 3. **呈现** —— Mac 校验后交给状态机,重算进度锚点(三档纠偏),再由歌词管线解析并分发到四个展示面。
+
+
+## 下载安装
+
+不用自己编译 —— 到 **[Releases](https://github.com/37chengshan/phone-lyrics-mac/releases/latest)** 直接下:
+
+| 文件 | 给谁 |
+| --- | --- |
+| `Lyrimuse-v0.2.2-macos.dmg` | **Mac 端**(推荐,dmg 拖进「应用程序」即可) |
+| `Lyrimuse-v0.2.2-macos.zip` | Mac 端备选,内容相同(自动更新走的就是它) |
+| `PhoneLyricsRelay-debug.apk` | **Android 端** |
+
+Mac 端首次打开若被系统拦下:右键 → 打开,再点一次「打开」。只需一次。签名是 ad-hoc 的,
+没有做公证(见 [许可与版权说明](#许可与版权说明))。
+
+Android 端**建议先卸载旧版**再装:
+
+```bash
+adb uninstall com.phonlyrics.relay
+adb install -r PhoneLyricsRelay-debug.apk
+```
+
+> **Intel Mac 暂时没有兼容包。** 打包要求每个嵌入的二进制都带 x86_64,而读取播放状态用的
+> [media-control](https://github.com/ungive/media-control) 上游只发布 arm64。上游出了 universal
+> 版本就会补上 —— 发布脚本里那个 `--primary-only` 开关就是为这件事留的。
 
 ## 环境要求
 
@@ -247,6 +272,7 @@ Swift 与 Kotlin 两侧共用 `packages/protocol/fixtures/` 里的**同一批**�
 - Mac **不会**控制手机播放 —— 这是设计如此,不是缺失
 - 依赖局域网,不支持跨网络或云中继
 - 歌词依赖公开接口,冷门曲目可能找不到;可用「歌词管理」手动搜索或编辑
+- Intel Mac 暂无兼容包(上游 media-control 只发 arm64,见[下载安装](#下载安装))
 - 手机后台被系统回收时需要手动重开(已内置保活措施,但厂商 ROM 策略各异)
 
 ## 相关文档
@@ -284,4 +310,3 @@ the changes are documented in [NOTICE](NOTICE), and the complete corresponding s
 in this repository.
 
 Upstream: Lyrimuse — https://github.com/Yudaotor/lyrimuse (baseline commit `e6bdf6a`).
-
