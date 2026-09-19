@@ -103,5 +103,22 @@ class QqMetadataResolverTest {
         assertEquals("没有专辑时身份仍要稳定", a.identity, b.identity)
         assertEquals("身份里不含歌词行", false, a.identity.contains("歌词"))
     }
-}
 
+/**
+     * 真名带感叹号之类的符号时不能被误判(2026-09-19 用户确认 CANCELLED! 就是正确歌名)。
+     *
+     * 静态兜底要求 TITLE 带冒号**且** ARTIST 带分隔符 —— 这条守住前半条不成立时的行为。
+     * 之前真机抓到过"标题被当成歌词行"的样本,但那是**另外**一首歌;像下面这种正常元数据
+     * 必须原样穿过,否则真歌名会被拿去做"歌名-歌手"拆分,拆出来的东西谁也搜不到。
+     */
+    @Test
+    fun keepsRealTitleContainingPunctuation() {
+        val resolver = QqMetadataResolver()
+        val fixed = resolve(resolver, "CANCELLED!", "Taylor Swift",
+            album = "The Life of a Showgirl", durationMs = 187_000L)
+        assertEquals("真歌名原样,不能因为带符号就当成歌词行", "CANCELLED!", fixed.title)
+        assertEquals("歌手原样", "Taylor Swift", fixed.artist)
+        assertEquals("不该判成歌词模式", false, fixed.lyricLayout)
+        assertEquals("非歌词模式下不给歌词行", null, fixed.lyricLine)
+    }
+}

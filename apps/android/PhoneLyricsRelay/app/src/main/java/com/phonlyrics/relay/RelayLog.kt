@@ -23,6 +23,8 @@ object RelayLog {
     private const val NOW_ARTIST_KEY = "nowArtist"
     private const val NOW_PLAYING_KEY = "nowPlaying"
     private const val NOW_LYRIC_KEY = "nowLyric"
+    private const val NOW_LYRIC_NEXT_KEY = "nowLyricNext"
+    private const val NOW_LYRIC_SECONDARY_KEY = "nowLyricSecondary"
     private const val SENT_COUNT_KEY = "sentCount"
     private const val FAILED_COUNT_KEY = "failedCount"
     private const val LAST_LATENCY_KEY = "lastLatencyMs"
@@ -103,10 +105,29 @@ object RelayLog {
     /// 跟 publishNowPlaying 分开两个方法而不是加个参数:歌词行的更新频率比曲目信息高得多
     /// (每句一次),而曲目信息几秒才动一回。合在一起会让曲目那几个值每句歌词都被重写一遍,
     /// 界面按值比较的"变了才动"逻辑就白做了。
-    fun publishLyric(context: Context, line: String) {
+    fun publishLyric(context: Context, lyric: LyricPayload) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString(NOW_LYRIC_KEY, line)
+            .putString(NOW_LYRIC_KEY, lyric.current.orEmpty())
+            .putString(NOW_LYRIC_NEXT_KEY, lyric.next.orEmpty())
+            .putString(NOW_LYRIC_SECONDARY_KEY, lyric.secondary.orEmpty())
             .apply()
+    }
+
+    /// 清掉歌词(停止同步时用)。
+    fun clearLyric(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove(NOW_LYRIC_KEY).remove(NOW_LYRIC_NEXT_KEY).remove(NOW_LYRIC_SECONDARY_KEY)
+            .apply()
+    }
+
+    /// 读当前歌词三件套:(当前行, 副行, 下一句)。
+    fun currentLyricTriple(context: Context): Triple<String, String, String> {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return Triple(
+            prefs.getString(NOW_LYRIC_KEY, "").orEmpty(),
+            prefs.getString(NOW_LYRIC_SECONDARY_KEY, "").orEmpty(),
+            prefs.getString(NOW_LYRIC_NEXT_KEY, "").orEmpty(),
+        )
     }
 
     /// 读当前歌词行。空串 = 此刻没有歌词可显示(歌没播、或那首歌没有通知栏歌词)。

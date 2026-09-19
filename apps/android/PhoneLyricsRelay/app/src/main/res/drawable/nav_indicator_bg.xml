@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  导航胶囊里那块"跟着选中项滑过去"的底(2026-09-19)。
+
+  之前选中态画在**格子自己**身上:点一下,原来那格灭、新那格亮,是瞬移。用户要的滑动
+  特效需要一个跨越格子的元件 —— 它必须是个独立 View,由位移和宽度一起动画。
+
+  颜色取得比原来格子里的底更淡:#1F 是 12% 不透明度。它要压在深色胶囊上、又要让上面的
+  图标与文字仍然清楚,太实的蓝会把这两样都吃掉。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1F7AA2FF" />
+    <corners android:radius="18dp" />
+</shape>

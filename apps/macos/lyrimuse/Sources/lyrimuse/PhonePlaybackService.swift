@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import LyrimuseCore
 import Network
 import Darwin
@@ -16,6 +17,12 @@ final class PhonePlaybackService: ObservableObject {
     private let stableMacId: String
     private var started = false
     private var pairingExpirationTask: Task<Void, Never>?
+
+    /// 给手机的歌词快照。**主 actor 侧写、HTTP 队列侧读**,理由见 PhoneLyricSnapshot 的文件头注。
+    private let lyricSnapshot = PhoneLyricSnapshot()
+    private var lyricSnapshotCancellables: [AnyCancellable] = []
+    /// 歌词的来源。集中一处,方便自检替换。
+    private let playback = PlaybackCoordinator.shared
 
     private init() {
         let defaults = UserDefaults.standard
@@ -43,6 +50,7 @@ final class PhonePlaybackService: ObservableObject {
                 self?.updateDiscovery(pairingEnabled: false)
             }
         }
+        installLyricProvider()
         server.onStateChange = { [weak self] state in
             Task { @MainActor in
                 switch state {
@@ -56,7 +64,55 @@ final class PhonePlaybackService: ObservableObject {
         }
     }
 
+
+    /// 歌词随响应回给手机(2026-09-19)。见 PhoneHTTPRouter.lyricProvider 的注释 ——
+    /// 手机不解析歌词,它只显示;解析是 Mac 的活(十个源、缓存、逐字、译文都在这一侧)。
+    ///
+    /// ⚠️ 这里**不能**在读的那一侧直接取 PlaybackCoordinator:取歌词的闭包是在 NWListener 的
+    /// HTTP 队列上被调到的,而 coordinator 是主 actor 的,中间隔着 actor 边界。第一版写的是
+    /// MainActor.assumeIsolated —— 那是个**会崩**的写法(前提不成立时直接触发断言,表现为
+    /// 手机一发心跳 Mac 就崩)。
+    ///
+    /// 改成单向数据流:主 actor 侧把"此刻该给什么"拍成一份小字典写进快照,HTTP 队列侧只做一次
+    /// 加锁取值、不等任何人。代价是"最多晚一个 runloop 拍",而歌词本来就是每秒一行的节奏。
+    private func installLyricProvider() {
+        router.lyricProvider = { [lyricSnapshot] in lyricSnapshot.current }
+
+        // 相关值一变就刷新快照。用订阅而不是"每次请求现算"——现算就得跨回主 actor,
+        // 那正是上面要避开的。
+        //
+        // 换歌时 hasLyricsContent 会先翻 false 再翻 true,中间那段手机拿到 nil,会保留上一首
+        // 的最后一行而不是闪一下空白 —— 这个观感是刻意的,见 provider 的注释。
+        lyricSnapshotCancellables = [
+            playback.$currentLine.sink { [weak self] _ in self?.refreshLyricSnapshot() },
+            playback.$nextLineText.sink { [weak self] _ in self?.refreshLyricSnapshot() },
+            playback.$hasLyricsContent.sink { [weak self] _ in self?.refreshLyricSnapshot() },
+            playback.$title.sink { [weak self] _ in self?.refreshLyricSnapshot() },
+            playback.$artist.sink { [weak self] _ in self?.refreshLyricSnapshot() },
+        ]
+        refreshLyricSnapshot()
+    }
+
+    /// 把当前歌词拍成一份能给手机的小字典,写进快照。
+    ///
+    /// 组装规则本身在 PhoneLyricPayload.make 里(纯函数,自检直接覆盖)—— 这里只负责
+    /// 从 coordinator 取值。为什么这样拆:那几条"空值放不放、什么时候给 nil"的规则直接决定
+    /// 手机屏幕上有没有字,而它们放在 @MainActor 的类里就没法被测试单独钉住。
+    private func refreshLyricSnapshot() {
+        let payload = PhoneLyricPayload.make(
+            hasLyricsContent: playback.hasLyricsContent,
+            currentLine: playback.currentLine?.plainText,
+            translation: playback.currentLine?.translation,
+            romanization: playback.currentLine?.romanization,
+            nextLine: playback.nextLineText,
+            title: playback.title,
+            artist: playback.artist
+        )
+        lyricSnapshot.update(payload)
+    }
+
     func start() {
+
         guard !started else { return }
         started = true
         PhonePlaybackBridge.shared.setEnabled(true)

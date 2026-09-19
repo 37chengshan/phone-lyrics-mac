@@ -64,6 +64,12 @@ class RelayService : Service() {
         // 对 SharedPreferences 的"读-改-写"天然不会并发,不需要额外加锁。
         queue = RelayEventQueue(sender = { envelope ->
             val outcome = api.sendDetailed(envelope)
+            // 歌词随响应回来(2026-09-19):Mac 那边有十个源的解析引擎与缓存,歌词由它给。
+            // 手机这边原先想从 QQ 音乐的通知栏元数据里捞,那条路不可靠 —— 它取决于
+            // QQ 音乐自己的通知行为,实测拿不到。现在改成"解析在 Mac、显示在手机"。
+            outcome.lyric?.let { lyric ->
+                RelayLog.publishLyric(applicationContext, lyric)
+            }
             // ⚠️ 成功才在这里记。失败**不能**记在这儿:RelayEventQueue 对瞬时失败会重试
             // (最多 4 次,指数退避),每试一次都会调 sender —— 原来把失败也记在这里,于是网络抖
             // 一下界面上就出现"失败 3",而那条事件其实最终送出去了。失败的计数交给下面的
@@ -152,6 +158,8 @@ class RelayService : Service() {
         // 判据看心跳而不是 running 布尔:running 在那个场景下仍是 true(没人改过它),
         // 而心跳会随进程一起停 —— 这正是两个信号的区别所在。
         RelayLog.clearNowPlaying(this)
+        // 歌词一样(2026-09-19):它是 Mac 回传的,进程一停就不会再有新的,留着会定在最后一句。
+        RelayLog.clearLyric(this)
         getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         super.onDestroy()
     }
@@ -172,7 +180,18 @@ class RelayService : Service() {
         // derive() 只看状态与位置,于是仍判成 HEARTBEAT,再被上面那道闸拦掉。
         // 不加这一条的话,开了通知栏歌词的歌在手机上一句都不会动。
         val lyricChanged = previous?.lyricLine != snapshot.lyricLine
+        // 换歌时把本机那几行歌词清掉(2026-09-19)。
+        //
+        // ⚠️ 这一条是必须的,不然后半段会出错:歌词是 Mac 回传的,而它换歌时要先搜一遍,
+        // 那段时间它给的是 nil(见 PhoneHTTPRouter.lyricProvider 的注释),手机这边的约定
+        // 是"nil 就保留上一帧"。单看那句约定没问题,但**换歌**场景下它等于让上一首的最后
+        // 一句一直挂在屏幕上 —— 用户看到的是"新歌在放、歌词是旧歌的"。
+        //
+        // 手机自己就知道换没换歌(trackId 是它算的),所以这个判断不该去猜 Mac 的时序。
+        // 清掉之后界面会显示"Mac 正在为这首歌找歌词…",那才是此刻的真实状态。
+        val trackChanged = previous?.trackId != null && previous!!.trackId != snapshot.trackId
         previous = snapshot
+        if (trackChanged) RelayLog.clearLyric(applicationContext)
         if (!tooSoonForNetwork || lyricChanged) {
             queue.enqueue(factory.next(event, snapshot))
         }
@@ -183,10 +202,11 @@ class RelayService : Service() {
         // 重建后读一次就能拿到最新值,不需要收发配对的时序假设。
         RelayLog.publishNowPlaying(applicationContext, snapshot.title, snapshot.artist,
             snapshot.state == WirePlaybackState.PLAYING)
-        // 当前歌词行(2026-09-19)。QQ 音乐开着"通知栏歌词"时,那一行就在元数据的 TITLE 里 ——
-        // 也正是我之前当"假歌名"过滤掉的东西。同一个值,对搜索是噪声、对显示是正 нужное。
-        // 没有歌词行时传空串,让界面知道该退回收起状态。
-        RelayLog.publishLyric(applicationContext, snapshot.lyricLine.orEmpty())
+        // ⚠️ 歌词**不在这里**发布(2026-09-19 改了架构)。
+        //
+        // 原先从 snapshot.lyricLine 取 —— 那条路赌的是"QQ 音乐会把它正在唱的那句写进通知栏
+        // 元数据",而实测拿到的只有真歌名。现在改成:歌词由 Mac 解析(它有十个源、缓存、逐字、
+        // 译文),搭在每次发送的**响应**里回来,见下面 sender 里对 outcome.lyric 的处理。
         // 顺手记一条收听(见 ListeningLog 头注)。只在真在播时记,暂停/停止不计时。
         if (snapshot.state == WirePlaybackState.PLAYING) {
             ListeningLog.note(applicationContext, snapshot)

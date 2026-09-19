@@ -14,9 +14,11 @@ android {
         // ⚠️ 跟 Mac 端(`LYRIMUSE_VERSION`,写进 CFBundleShortVersionString)保持同一个号:
         // 两端是**同一个产品**,版本号分叉之后用户报问题时就分不清在说哪一对组合。
         // 0.2.0 是 2026-09-19 的界面重做版:四页悬浮导航、歌词页、统计页。
+        // 0.2.2 修的是"手机不显示歌词":歌词改由 Mac 解析后搭在响应里回传,
+        // 并给导航加了滑动指示器、给统计图表加了动画与数字气泡。
         // versionCode 是 Android 自己的单调递增整数,与展示版本无关,改展示版本不必动它。
-        versionCode = 7
-        versionName = "0.2.1"
+        versionCode = 8
+        versionName = "0.2.2"
     }
 
     buildTypes {

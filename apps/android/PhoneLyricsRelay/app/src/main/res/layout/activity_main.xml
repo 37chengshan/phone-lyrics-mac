@@ -707,15 +707,6 @@
                         android:orientation="vertical" />
                 </LinearLayout>
 
-                <Button
-                    android:id="@+id/btnClearStats"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:stateListAnimator="@animator/btn_press"
-                    android:text="清空统计"
-                    android:textColor="#FF7B72"
-                    app:backgroundTint="@color/btn_ghost_tint" />
             </LinearLayout>
         </ScrollView>
 
@@ -982,6 +973,7 @@
 
     <!-- ================= 悬浮导航 ================= -->
     <LinearLayout
+        android:id="@+id/navBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
@@ -993,123 +985,141 @@
         android:paddingEnd="16dp"
         android:paddingBottom="14dp">
 
-        <LinearLayout
+        <FrameLayout
             android:id="@+id/navPill"
             android:layout_width="0dp"
             android:layout_height="56dp"
             android:layout_weight="1"
             android:background="@drawable/nav_pill_bg"
             android:elevation="8dp"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
             android:paddingStart="6dp"
             android:paddingEnd="6dp">
 
-            <LinearLayout
-                android:id="@+id/navStatus"
+            <!-- 滑动指示器(2026-09-19)。选中态**不**画在格子上,而是由这一个 View 滑过去 ——
+                 用户要的“滑动特效”就是这个。它必须独立存在:画在格子自己身上的话,切换
+                 只能是“原来那格灭、新那格亮”的瞬移,中间没有可插值的东西。
+                 宽度与位置由 MainActivity.updateNavIndicator 按目标格子算,这里只给初值。 -->
+            <View
+                android:id="@+id/navIndicator"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@drawable/nav_item_active_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical">
-                <ImageView
-                    android:id="@+id/navStatusIcon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:contentDescription="状态"
-                    android:src="@drawable/ic_tab_status" />
-                <TextView
-                    android:id="@+id/navStatusLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="状态"
-                    android:textColor="#8B93A1"
-                    android:textSize="10sp" />
-            </LinearLayout>
+                android:layout_gravity="start|center_vertical"
+                android:background="@drawable/nav_indicator_bg" />
 
+            <!-- 四格装在自己的 LinearLayout 里,而不是直接铺在 FrameLayout 上:
+                 layout_weight 只在 LinearLayout 里生效,直接铺开会四格等分不了。 -->
             <LinearLayout
-                android:id="@+id/navLyrics"
-                android:layout_width="0dp"
+                android:id="@+id/navRow"
+                android:layout_width="match_parent"
                 android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@drawable/nav_item_active_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical">
-                <ImageView
-                    android:id="@+id/navLyricsIcon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:contentDescription="歌词"
-                    android:src="@drawable/ic_tab_lyrics" />
-                <TextView
-                    android:id="@+id/navLyricsLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="歌词"
-                    android:textColor="#8B93A1"
-                    android:textSize="10sp" />
-            </LinearLayout>
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-            <LinearLayout
-                android:id="@+id/navStats"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@drawable/nav_item_active_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical">
-                <ImageView
-                    android:id="@+id/navStatsIcon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:contentDescription="统计"
-                    android:src="@drawable/ic_tab_stats" />
-                <TextView
-                    android:id="@+id/navStatsLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="统计"
-                    android:textColor="#8B93A1"
-                    android:textSize="10sp" />
-            </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/navStatus"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+                    <ImageView
+                        android:id="@+id/navStatusIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="状态"
+                        android:src="@drawable/ic_tab_status" />
+                    <TextView
+                        android:id="@+id/navStatusLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="状态"
+                        android:textColor="#8B93A1"
+                        android:textSize="10sp" />
+                </LinearLayout>
 
-            <LinearLayout
-                android:id="@+id/navSettings"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:background="@drawable/nav_item_active_bg"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical">
-                <ImageView
-                    android:id="@+id/navSettingsIcon"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
-                    android:contentDescription="设置"
-                    android:src="@drawable/ic_tab_settings" />
-                <TextView
-                    android:id="@+id/navSettingsLabel"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="设置"
-                    android:textColor="#8B93A1"
-                    android:textSize="10sp" />
-            </LinearLayout>
-        </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/navLyrics"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+                    <ImageView
+                        android:id="@+id/navLyricsIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="歌词"
+                        android:src="@drawable/ic_tab_lyrics" />
+                    <TextView
+                        android:id="@+id/navLyricsLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="歌词"
+                        android:textColor="#8B93A1"
+                        android:textSize="10sp" />
+                </LinearLayout>
 
+                <LinearLayout
+                    android:id="@+id/navStats"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+                    <ImageView
+                        android:id="@+id/navStatsIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="统计"
+                        android:src="@drawable/ic_tab_stats" />
+                    <TextView
+                        android:id="@+id/navStatsLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="统计"
+                        android:textColor="#8B93A1"
+                        android:textSize="10sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/navSettings"
+                    android:layout_width="0dp"
+                    android:layout_height="44dp"
+                    android:layout_weight="1"
+                    android:background="@android:color/transparent"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical">
+                    <ImageView
+                        android:id="@+id/navSettingsIcon"
+                        android:layout_width="22dp"
+                        android:layout_height="22dp"
+                        android:contentDescription="设置"
+                        android:src="@drawable/ic_tab_settings" />
+                    <TextView
+                        android:id="@+id/navSettingsLabel"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="设置"
+                        android:textColor="#8B93A1"
+                        android:textSize="10sp" />
+                </LinearLayout>
+            </LinearLayout>
+        </FrameLayout>
         <ImageButton
             android:id="@+id/syncFab"
             android:layout_width="60dp"
@@ -1122,4 +1132,3 @@
             android:src="@drawable/ic_sync_start" />
     </LinearLayout>
 </FrameLayout>
-

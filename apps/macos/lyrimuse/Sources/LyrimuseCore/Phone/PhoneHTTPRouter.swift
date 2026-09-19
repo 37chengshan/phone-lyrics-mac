@@ -7,6 +7,16 @@ public final class PhoneHTTPRouter: @unchecked Sendable {
     public var onPlayback: ((PhonePlaybackEnvelope) -> Void)?
     public var onPairingChanged: (() -> Void)?
 
+    /// 当前歌词的提供方(2026-09-19)。由 App 侧接上 PlaybackCoordinator —— 解析好的当前行、
+    /// 下一句、译文与罗马音都在那里。
+    ///
+    /// 为什么搭在**响应**里而不是单开接口:手机每秒本来就在发心跳,顺路带回来是零额外请求、
+    /// 零额外延迟。单开接口要么让手机再轮询一次(请求翻倍),要么走长连接(复杂度陡增)。
+    ///
+    /// ⚠️ nil = "此刻没有歌词可给"(没在播 / 这首歌没歌词),与"歌词是空的"是两回事 ——
+    /// 前者让手机保留上一帧,别把界面清掉。
+    public var lyricProvider: (() -> [String: Any]?)?
+
     public init(pairingStore: PhonePairingStore) {
         self.pairingStore = pairingStore
     }
@@ -43,7 +53,14 @@ public final class PhoneHTTPRouter: @unchecked Sendable {
                 let envelope = try PhonePlaybackEnvelope.decodeAndValidate(request.body)
                 lastAcceptedEnvelope = envelope
                 onPlayback?(envelope)
-                return .json(status: 200, object: ["ok": true, "sequence": envelope.sequence])
+
+                // 把当前歌词一并带回(2026-09-19)。
+                //
+                // ⚠️ 读取必须排在 onPlayback 之后:那一步是"把这次事件交给播放管线",
+                // 换歌时的歌词解析由它触发。先读的话会拿到上一首的行。
+                var payload: [String: Any] = ["ok": true, "sequence": envelope.sequence]
+                if let lyric = lyricProvider?() { payload["lyric"] = lyric }
+                return .json(status: 200, object: payload)
             } catch {
                 return .json(status: 400, object: ["error": "invalid_playback"])
             }

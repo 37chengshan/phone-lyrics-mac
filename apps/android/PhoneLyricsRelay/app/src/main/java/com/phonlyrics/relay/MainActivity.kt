@@ -112,6 +112,28 @@ class MainActivity : AppCompatActivity() {
     /// 统计页当前看的区间(天)。0 = 全部。默认今天。
     private var statsRangeDays = 1
 
+    /// 统计页正在跑的动画(数字滚动、柱子长高、进度条推进)。换区间/重进这一页时要先全部
+    /// `cancel` —— 不取消的话旧动画会继续往已经重排过的 View 上写值,表现成数字乱跳。
+    private val statsAnimators = mutableListOf<android.animation.Animator>()
+
+    /// 图表上那个数字气泡(同一时刻最多一个)。
+    private var chartTip: TextView? = null
+    private var chartTipHide: Runnable? = null
+
+    /// 导航胶囊里那块跟着选的滑块。见 updateNavIndicator。
+    private val navIndicator by lazy { findViewById<View>(R.id.navIndicator) }
+    /// navRow:四格的容器。换算滑块坐标要用它的 left,见 updateNavIndicator。
+    private val navRow by lazy { findViewById<View>(R.id.navRow) }
+    /// 四格(与 switchTab 里的 items 同序),算滑块位置要用它们的实际宽度。
+    private val navCells by lazy {
+        listOf(
+            findViewById<View>(R.id.navStatus),
+            findViewById<View>(R.id.navLyrics),
+            findViewById<View>(R.id.navStats),
+            findViewById<View>(R.id.navSettings),
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -159,7 +181,6 @@ class MainActivity : AppCompatActivity() {
         rangeWeek.setOnClickListener { selectStatsRange(7) }
         rangeMonth.setOnClickListener { selectStatsRange(30) }
         rangeAll.setOnClickListener { selectStatsRange(0) }
-        findViewById<Button>(R.id.btnClearStats).setOnClickListener { confirmClearStats() }
         switchTab(Tab.STATUS)
         refreshUi()
     }
@@ -237,31 +258,81 @@ class MainActivity : AppCompatActivity() {
 
             val wasActive = cellView.isSelected
             cellView.isSelected = active
+            // 格子的底一律透明(2026-09-19):选中态改由独立的 navIndicator 滑过去表达,
+            // 画在格子上就没有可插值的中间态 —— 那正是用户说的"要滑动特效"。
             cellView.background = androidx.core.content.ContextCompat.getDrawable(
-                this, if (active) R.drawable.nav_item_active_bg else R.drawable.nav_item_inactive_bg)
+                this, R.drawable.nav_item_inactive_bg)
             iconView.imageTintList = android.content.res.ColorStateList.valueOf(
                 if (active) 0xFF7AA2FF.toInt() else 0xFF6B7484.toInt())
             labelView.setTextColor(if (active) 0xFFEEF1F5.toInt() else 0xFF6B7484.toInt())
 
-            // 动画(2026-09-19 补):原来选中态是瞬间换色换底,点下去"啪"一下就到位,
-            // 没有任何过渡 —— 用户报的"底部栏动画不行"就是这个。
-            //
-            // 只给**刚被选中**的那一格播:全播的话另外三格会跟着抖一下,像在抢注意力。
-            // 弹一下(1.0 → 1.12 → 1.0)而不是单纯放大:回弹那下才有"按进去了"的手感。
+            // 图标与文字跟着滑块一起"弹一下"(1.0 → 1.14 → 1.0):回弹那下才有"按进去了"
+            // 的手感。只给**刚被选中**的那一格播 —— 全播的话另外三格会跟着抖,像在抢注意力。
             if (active && !wasActive && !reduceMotion) {
                 iconView.scaleX = 1f
                 iconView.scaleY = 1f
                 iconView.animate()
-                    .scaleX(1.12f).scaleY(1.12f).setDuration(110)
+                    .scaleX(1.14f).scaleY(1.14f).setDuration(110)
                     .withEndAction {
                         iconView.animate().scaleX(1f).scaleY(1f).setDuration(130).start()
                     }
                     .start()
+                labelView.animate().alpha(0.55f).setDuration(90)
+                    .withEndAction { labelView.animate().alpha(1f).setDuration(140).start() }
+                    .start()
             }
         }
 
+        updateNavIndicator()
+
         // 统计页是按需算的:切进去那一下算一次,不必每秒跟着曲目刷新跑。
         if (tab == Tab.STATS) renderStats()
+    }
+
+
+    /// 把滑块挪到当前选中那一格上(2026-09-19,用户要的"滑动特效")。
+    ///
+    /// x 决定"在哪一格",宽度收一点(76%)让滑块比格子窄、左右留白 —— 看起来像格子里垫着的
+    /// 一块,而不是整格被涂满。
+    ///
+    /// ⚠️ 坐标要算对:滑块与 navRow 同在一个带 padding 的 FrameLayout 里,而 cell.left 是相对
+    /// navRow 的 —— 必须加上 navRow 自己的 left 才换算成"相对 navPill"的坐标(这正是 View.x
+    /// 的参考系)。漏掉这一项时滑块会整体偏左,在最后一格上尤其明显。
+    ///
+    /// ⚠️ 还要等布局量完(格子 width > 0)。第一次进来是在 onCreate 里调的,那时宽度还是 0,
+    /// 算出来会把滑块摆在坐标原点。所以没量完时挂到 post 里再来一次 —— 这个分支只在启动那
+    /// 一次走到,不影响之后切换的手感。
+    private fun updateNavIndicator(animate: Boolean = true) {
+        val index = when (currentTab) {
+            Tab.STATUS -> 0
+            Tab.LYRICS -> 1
+            Tab.STATS -> 2
+            Tab.SETTINGS -> 3
+        }
+        val cell = navCells[index]
+        if (cell.width == 0) {
+            cell.post { updateNavIndicator(animate = false) }
+            return
+        }
+        val targetWidth = (cell.width * 0.76f).toInt()
+        val targetX = navRow.left + cell.left + (cell.width - targetWidth) / 2f
+
+        val lp = navIndicator.layoutParams
+        if (lp.width != targetWidth) {
+            lp.width = targetWidth
+            navIndicator.layoutParams = lp
+        }
+
+        // 第一次(还没量过)直接落位:从屏幕外滑进来会像"有个东西飞过去了"。
+        if (!animate || reduceMotion || navIndicator.width == 0) {
+            navIndicator.x = targetX
+            return
+        }
+        navIndicator.animate()
+            .x(targetX)
+            .setDuration(260L)
+            .setInterpolator(android.view.animation.PathInterpolator(0.2f, 0.9f, 0.2f, 1f))
+            .start()
     }
 
     /// 解除配对(2026-09-17)。清掉令牌并停掉同步 —— 见调用点上方那段注释,原来没有这个出口。
@@ -378,6 +449,9 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("relay", MODE_PRIVATE).edit().putBoolean("running", false).apply()
         // 曲目也要清掉:不清的话界面会停在上一次播的那首歌上,看起来像是还在同步。
         RelayLog.clearNowPlaying(this)
+        // 歌词同理(2026-09-19)。它是 Mac 每秒回传的,停掉之后不会再有新的来 ——
+        // 留着的话歌词页会定在上次那一句,读起来像"还在放"。
+        RelayLog.clearLyric(this)
         running = false
         RelayLog.note("relay stopped")
         refreshUi()
@@ -614,7 +688,7 @@ class MainActivity : AppCompatActivity() {
     /// —— 每来新的一句,旧的顺下去。拖进度条回跳时会短暂对不上,下一句一到就追上。
     private fun applyLyrics() {
         val (title, artist, _) = RelayLog.nowPlaying(this)
-        val line = RelayLog.currentLyric(this)
+        val (current, secondary, next) = RelayLog.currentLyricTriple(this)
 
         lyricTrack.text = when {
             title.isNotBlank() && artist.isNotBlank() -> "$title · $artist"
@@ -622,28 +696,41 @@ class MainActivity : AppCompatActivity() {
             else -> "还没有在播放"
         }
 
-        if (line.isBlank()) {
+        // ⚠️ 歌词由 **Mac** 给(2026-09-19 改的架构)。
+        //
+        // 之前想在手机本地从 QQ 音乐的元数据里捞,那条路不可靠:它取决于 QQ 音乐自己的
+        // 通知行为,实测拿到的只有真歌名、没有歌词行。而 Mac 那边本来就有完整的解析引擎
+        // (十个源、缓存、逐字、译文、罗马音),歌词搭在它每次响应里回来即可 ——
+        // 手机只管显示,不重复实现一遍解析。
+        if (current.isBlank()) {
             lyricCurrent.text = if (running) "等待歌词…" else "在手机上用 QQ 音乐放一首歌"
             lyricPrev.text = ""
             lyricNext.text = ""
             lyricHint.text = when {
-                !running -> "歌词来自 QQ 音乐的通知栏显示。开始同步后这里会跟着唱。"
-                !lastKnownNotifEnabled -> "没有通知使用权,读不到歌词 —— 去「设置」页开启。"
-                else -> "在 QQ 音乐里打开「通知栏显示歌词」,这里就会跟着唱。"
+                !running -> "歌词由 Mac 解析后回传。开始同步后这里会跟着唱。"
+                title.isBlank() -> "在手机上用 QQ 音乐放一首歌。"
+                else -> "Mac 正在为这首歌找歌词…"
             }
             return
         }
 
-        if (lyricCurrent.text.toString() != line) {
-            lyricPrev.text = lyricCurrent.text
-            lyricNext.text = ""
-            lyricCurrent.text = line
+        if (lyricCurrent.text.toString() != current) {
+            lyricPrev.text = lyricCurrent.text.let { if (it == current) "" else it }
+            lyricCurrent.text = current
             if (!reduceMotion) {
                 lyricCurrent.alpha = 0.35f
                 lyricCurrent.animate().alpha(1f).setDuration(220).start()
             }
         }
-        lyricHint.text = "歌词来自 QQ 音乐的通知栏显示"
+        // 副行放译文或罗马音,跟主行一起换。
+        lyricNext.text = when {
+            secondary.isNotBlank() -> secondary
+            next.isNotBlank() -> next
+            else -> ""
+        }
+        lyricHint.text = "歌词由 Mac 解析"
+        // 上一句:把上一次的 current 顺下来 —— 通知栏不给上下文,这是本机能做的最好推断。
+        if (lyricPrev.text.isBlank()) lyricPrev.text = ""
     }
 
     /// 统计区间切换。
@@ -664,27 +751,124 @@ class MainActivity : AppCompatActivity() {
         renderStats()
     }
 
+
     /// 渲染统计页。数据来自本机 ListeningLog —— 见那个文件头注里为什么不从 Mac 要。
+    ///
+    /// 每次进这一页都重放一遍动画(2026-09-19,用户要求"所有图表都需要有动画"):数字从 0
+    /// 滚上去、柱子从底部长起来、进度条推进去。同一份数据反复看会重复播,这是刻意的 ——
+    /// 静止的图表看不出"这些数刚算过一遍"。
     private fun renderStats() {
+        statsAnimators.forEach { it.cancel() }
+        statsAnimators.clear()
+        dismissChartTip()
+
         val summary = ListeningLog.summarize(this, statsRangeDays)
         if (summary.isEmpty) {
             statsTotal.text = "—"
             statsTracks.text = "—"
             statsAvg.text = "—"
+            statsTrend.text = "—"
+            statsTrend.setTextColor(0xFF5C6470.toInt())
+            statsStreak.text = "—"
             statsChart.removeAllViews()
-            statsChartEmpty.visibility = View.VISIBLE
+            statsHourChart.removeAllViews()
+            statsArtistList.removeAllViews()
             statsTopList.removeAllViews()
+            statsChartEmpty.visibility = View.VISIBLE
             return
         }
-        statsTotal.text = formatDuration(summary.totalMs)
-        statsTracks.text = "${summary.tracks.size}"
-        statsAvg.text = formatDuration(summary.averagePerActiveDayMs)
+        statsChartEmpty.visibility = View.GONE
+
+        // 三个数各自滚上去。格式化函数跟非动画路径共用同一个,免得两处口径分叉
+        // (比如动画结束时停在 59 分、静态渲染写 1 小时)。
+        animateNumber(statsTotal, summary.totalMs, ::formatDuration)
+        animateNumber(statsTracks, summary.tracks.size.toLong()) { "$it" }
+        animateNumber(statsAvg, summary.averagePerActiveDayMs, ::formatDuration)
         renderTrend(summary)
         renderDailyChart(summary)
         renderTopTracks(summary)
         renderHourChart(summary)
         renderArtistList(summary)
     }
+
+    /// 数字从 0 滚到目标值。
+    ///
+    /// 只在 reduceMotion 关着时播 —— 开着的人要的是"别动",照常从 0 数上去比直接给结果糟糕得多。
+    private fun animateNumber(view: TextView, target: Long, format: (Long) -> String) {
+        if (reduceMotion) {
+            view.text = format(target)
+            return
+        }
+        val animator = android.animation.ValueAnimator.ofFloat(0f, target.toFloat())
+        animator.duration = 620L
+        animator.interpolator = android.view.animation.DecelerateInterpolator()
+        animator.addUpdateListener {
+            view.text = format((it.animatedValue as Float).toLong())
+        }
+        statsAnimators += animator
+        animator.start()
+    }
+
+    /// 图表柱子在**选中时**浮出来的数字气泡(2026-09-19,用户要求"点击能够看到浮动的具体数字")。
+    ///
+    /// 气泡挂在那层最外的 root 上、而不是柱子的父容器里:父容器是 LinearLayout、有裁剪与
+    /// 布局约束,气泡要能压在别的元素上面,只有 root 那层 FrameLayout 是自由的。坐标按
+    /// 屏幕坐标做差算出来,所以柱子在哪一层都能用。
+    private fun showChartTip(anchor: View, text: String) {
+        val root = findViewById<android.widget.FrameLayout>(R.id.root)
+        dismissChartTip()
+
+        val tip = TextView(this).apply {
+            this.text = text
+            setTextColor(0xFFEEF1F5.toInt())
+            textSize = 12f
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = androidx.core.content.ContextCompat.getDrawable(this@MainActivity, R.drawable.tooltip_bg)
+            alpha = 0f
+        }
+        root.addView(tip)
+        chartTip = tip
+
+        // 摆位要等它自己量完 —— 没量之前 width 是 0,居中会偏出去半个气泡。
+        tip.post {
+            val anchorPos = IntArray(2)
+            val rootPos = IntArray(2)
+            anchor.getLocationOnScreen(anchorPos)
+            root.getLocationOnScreen(rootPos)
+            val anchorLeft = anchorPos[0] - rootPos[0]
+            val anchorTop = anchorPos[1] - rootPos[1]
+            val centered = anchorLeft + (anchor.width - tip.width) / 2f
+            val maxX = (root.width - tip.width).coerceAtLeast(0).toFloat()
+            tip.x = centered.coerceIn(0f, maxX)
+            tip.y = (anchorTop - tip.height - dp(8)).toFloat()
+            if (!reduceMotion) {
+                tip.translationY = dp(6).toFloat()
+                tip.animate().alpha(1f).translationY(0f).setDuration(140).start()
+            } else {
+                tip.alpha = 1f
+            }
+        }
+
+        // 自动消失。给足 2.6 秒:数字要能被读完,而点下一根柱子会立刻换掉它,
+        // 不存在"来不及看完"的问题。
+        val hide = Runnable { dismissChartTip() }
+        chartTipHide = hide
+        uiTicker.postDelayed(hide, 2_600L)
+    }
+
+    private fun dismissChartTip() {
+        chartTipHide?.let { uiTicker.removeCallbacks(it) }
+        chartTipHide = null
+        chartTip?.let { tip ->
+            chartTip = null
+            val root = findViewById<android.widget.FrameLayout>(R.id.root)
+            if (reduceMotion) root.removeView(tip)
+            else tip.animate().alpha(0f).setDuration(120)
+                .withEndAction { root.removeView(tip) }.start()
+        }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     /// 环比 + 连续天数。
     ///
@@ -701,33 +885,70 @@ class MainActivity : AppCompatActivity() {
             statsTrend.text = "$sign$percent%"
             statsTrend.setTextColor(
                 if (ratio >= 0) 0xFF3DD68C.toInt() else 0xFFFFA657.toInt())
+            // 百分比也滚上去:环比是这一页唯一的"结论性"数字,让它动一下值得。
+            if (!reduceMotion) {
+                val animator = android.animation.ValueAnimator.ofFloat(0f, percent.toFloat())
+                animator.duration = 620L
+                animator.interpolator = android.view.animation.DecelerateInterpolator()
+                animator.addUpdateListener {
+                    statsTrend.text = "$sign${(it.animatedValue as Float).toInt()}%"
+                }
+                statsAnimators += animator
+                animator.start()
+            }
         }
         statsStreak.text = if (summary.streakDays > 0) "${summary.streakDays} 天" else "—"
     }
 
     /// 24 小时分布。细柱,横轴刻度在布局里。
+    ///
+    /// 柱子从底部长起来(scaleY 0→1,轴心在底边)+ 逐根延迟,扫过去一眼能看出分布形状;
+    /// 点一下浮出"几点 · 多久"。
     private fun renderHourChart(summary: ListeningStats.Summary) {
         statsHourChart.removeAllViews()
         val peak = summary.byHour.maxOrNull() ?: 0L
         if (peak <= 0L) return
-        val density = resources.displayMetrics.density
         for (hour in 0..23) {
             val ms = summary.byHour[hour]
-            val heightDp = (52 * (ms.toDouble() / peak)).toInt().coerceAtLeast(2)
             val holder = android.widget.FrameLayout(this).apply {
                 layoutParams = android.widget.LinearLayout.LayoutParams(0, -1, 1f)
             }
             val bar = View(this).apply {
                 layoutParams = android.widget.FrameLayout.LayoutParams(
-                    (6 * density).toInt(), (heightDp * density).toInt()).apply {
+                    dp(6), (52 * (ms.toDouble() / peak)).toInt().coerceAtLeast(2).let(::dp)).apply {
                     gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
                 }
                 // 峰值那一小时高亮 —— 一眼看出"我几点听得多",不用逐根比高度。
                 setBackgroundColor(
                     if (ms == peak) 0xFF7AA2FF.toInt() else 0x807AA2FF.toInt())
+                contentDescription = "$hour 点,${formatDuration(ms)}"
+            }
+            if (ms > 0L) {
+                // 点空白区不算数:0 的柱子也没什么可说的,让它安静地待着。
+                bar.isClickable = true
+                bar.setOnClickListener {
+                    showChartTip(bar, "$hour 点 · ${formatDuration(ms)}")
+                }
             }
             holder.addView(bar)
             statsHourChart.addView(holder)
+            growFromBottom(bar, delayMs = hour * 16L)
+        }
+    }
+
+    /// 让一根柱子从底边长起来。轴心设在底边,所以缩放看起来就是"长高"而不是"从中间撑开"。
+    ///
+    /// 用 scaleY 而不是动画 layoutParams.height:后者每一帧都要请求一次布局(整棵子树的
+    /// measure/layout),24 根柱子一起播就是每秒上千次布局;scaleY 走的是渲染层的变换,
+    /// 不碰布局。
+    private fun growFromBottom(bar: View, delayMs: Long) {
+        if (reduceMotion) return
+        bar.scaleY = 0f
+        bar.pivotY = bar.layoutParams.height.toFloat()
+        bar.post {
+            bar.pivotY = bar.height.toFloat()
+            bar.animate().scaleY(1f).setStartDelay(delayMs).setDuration(420L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
         }
     }
 
@@ -737,13 +958,16 @@ class MainActivity : AppCompatActivity() {
         val top = summary.artists.take(8)
         if (top.isEmpty()) return
         val peak = top.first().ms.coerceAtLeast(1L)
-        val density = resources.displayMetrics.density
         for ((index, artist) in top.withIndex()) {
             val row = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = (if (index == 0) 12 else 10) * density.toInt()
+                    topMargin = dp(if (index == 0) 12 else 10)
+                }
+                isClickable = true
+                setOnClickListener {
+                    showChartTip(this, "${artist.key} · ${formatDuration(artist.ms)}")
                 }
             }
             // 名次固定宽度,让名字左缘对齐 —— 不等宽的话每行文字会缩进不一。
@@ -752,8 +976,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(0xFF5C6470.toInt())
                 textSize = 12f
                 gravity = android.view.Gravity.CENTER
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    (18 * density).toInt(), -2)
+                layoutParams = android.widget.LinearLayout.LayoutParams(dp(18), -2)
             })
             row.addView(TextView(this).apply {
                 text = artist.key
@@ -769,17 +992,26 @@ class MainActivity : AppCompatActivity() {
                 textSize = 12f
             })
             statsArtistList.addView(row)
-            // 细条表示相对量级,压在名字下面。
-            statsArtistList.addView(android.widget.ProgressBar(
+            // 细条表示相对量级,压在名字下面。推进去而不是直接给终值 —— 一排进度条同时
+            // 走到位,比静悄悄摆在那里更能表达"这是按大小排的"。
+            val bar = android.widget.ProgressBar(
                 this, null, android.R.attr.progressBarStyleHorizontal).apply {
                 max = 1000
-                progress = (1000 * (artist.ms.toDouble() / peak)).toInt()
+                progress = 0
                 progressTintList = android.content.res.ColorStateList.valueOf(0xFF3DD68C.toInt())
                 progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x14FFFFFF)
-                layoutParams = android.widget.LinearLayout.LayoutParams(-1, (4 * density).toInt()).apply {
-                    topMargin = (3 * density).toInt()
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, dp(4)).apply {
+                    topMargin = dp(3)
                 }
-            })
+            }
+            statsArtistList.addView(bar)
+            val target = (1000 * (artist.ms.toDouble() / peak)).toInt()
+            val animator = android.animation.ObjectAnimator.ofInt(bar, "progress", 0, target)
+            animator.duration = 560L
+            animator.startDelay = index * 24L
+            animator.interpolator = android.view.animation.DecelerateInterpolator()
+            statsAnimators += animator
+            if (reduceMotion) bar.progress = target else animator.start()
         }
     }
 
@@ -793,22 +1025,26 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val peak = summary.days.maxOf { it.ms }.coerceAtLeast(1L)
-        val density = resources.displayMetrics.density
-        for (day in summary.days) {
-            val heightDp = (100 * (day.ms.toDouble() / peak)).toInt().coerceAtLeast(3)
-            val bar = View(this).apply {
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    (14 * density).toInt(), (heightDp * density).toInt())
-                setBackgroundColor(0xFF7AA2FF.toInt())
-            }
+        val dayFormat = java.text.SimpleDateFormat("M 月 d 日", java.util.Locale.CHINA)
+        for ((index, day) in summary.days.withIndex()) {
             val holder = android.widget.FrameLayout(this).apply {
                 layoutParams = android.widget.LinearLayout.LayoutParams(0, -1, 1f)
             }
-            val lp = bar.layoutParams as android.widget.LinearLayout.LayoutParams
-            lp.gravity = android.view.Gravity.BOTTOM
-            bar.layoutParams = lp
+            val bar = View(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    dp(14), (100 * (day.ms.toDouble() / peak)).toInt().coerceAtLeast(3).let(::dp)).apply {
+                    gravity = android.view.Gravity.BOTTOM
+                }
+                setBackgroundColor(0xFF7AA2FF.toInt())
+            }
+            val label = dayFormat.format(java.util.Date(day.dayStartSecs * 1000L))
+            val reading = "$label · ${formatDuration(day.ms)}"
+            bar.contentDescription = reading
+            bar.isClickable = true
+            bar.setOnClickListener { showChartTip(bar, reading) }
             holder.addView(bar)
             statsChart.addView(holder)
+            growFromBottom(bar, delayMs = index * 22L)
         }
     }
 
@@ -818,55 +1054,54 @@ class MainActivity : AppCompatActivity() {
         val top = summary.tracks.take(5)
         if (top.isEmpty()) return
         val peak = top.first().totalMs.coerceAtLeast(1L)
-        val density = resources.displayMetrics.density
         for ((index, track) in top.withIndex()) {
+            val title = track.title.ifBlank { "未知曲目" }
+            val reading = "$title" + (if (track.artist.isNotBlank()) " · ${track.artist}" else "") +
+                " · ${formatDuration(track.totalMs)}"
             val row = android.widget.LinearLayout(this).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = (if (index == 0) 12 else 14) * density.toInt()
+                    topMargin = dp(if (index == 0) 12 else 14)
                 }
+                isClickable = true
+                setOnClickListener { showChartTip(this, reading) }
             }
             row.addView(TextView(this).apply {
-                text = "${index + 1}. ${track.title.ifBlank { "未知曲目" }}" +
+                text = "${index + 1}. $title" +
                     if (track.artist.isNotBlank()) " — ${track.artist}" else ""
                 setTextColor(0xFFD6DCE6.toInt())
                 textSize = 13.5f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            row.addView(android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            val bar = android.widget.ProgressBar(
+                this, null, android.R.attr.progressBarStyleHorizontal).apply {
                 max = 1000
-                progress = (1000 * (track.totalMs.toDouble() / peak)).toInt()
+                progress = 0
                 progressTintList = android.content.res.ColorStateList.valueOf(0xFF7AA2FF.toInt())
                 progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x14FFFFFF)
-                layoutParams = android.widget.LinearLayout.LayoutParams(-1, (6 * density).toInt()).apply {
-                    topMargin = (5 * density).toInt()
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, dp(6)).apply {
+                    topMargin = dp(5)
                 }
-            })
+            }
+            row.addView(bar)
             row.addView(TextView(this).apply {
                 text = formatDuration(track.totalMs)
                 setTextColor(0xFF5C6470.toInt())
                 textSize = 11f
                 layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
-                    topMargin = (3 * density).toInt()
+                    topMargin = dp(3)
                 }
             })
             statsTopList.addView(row)
+            val target = (1000 * (track.totalMs.toDouble() / peak)).toInt()
+            val animator = android.animation.ObjectAnimator.ofInt(bar, "progress", 0, target)
+            animator.duration = 560L
+            animator.startDelay = index * 60L
+            animator.interpolator = android.view.animation.DecelerateInterpolator()
+            statsAnimators += animator
+            if (reduceMotion) bar.progress = target else animator.start()
         }
-    }
-
-    /// 清空统计(二次确认 —— 删了拿不回来)。
-    private fun confirmClearStats() {
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("清空统计?")
-            .setMessage("本机记录的收听时长会全部删除,之后从零累计。这个操作不可撤销。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("清空") { _, _ ->
-                ListeningLog.clear(this)
-                renderStats()
-                toast("统计已清空")
-            }
-            .show()
     }
 
     /// 毫秒 → 人读的时长。小于一小时给"12 分"(不带秒 —— 这一页是概览,秒是噪音)。
