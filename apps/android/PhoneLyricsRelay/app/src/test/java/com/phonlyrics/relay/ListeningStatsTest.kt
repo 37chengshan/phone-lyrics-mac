@@ -122,4 +122,98 @@ class ListeningStatsTest {
         assertEquals("只有 2 个活跃日", 2, s.days.size)
         assertEquals("平均按活跃日算 = 1 小时,而不是 2 小时 / 7 天", 3_600_000L, s.averagePerActiveDayMs)
     }
+    /** 时段分布要落在**本地小时**上,不是 UTC 小时。 */
+    @Test
+    fun hourBucketsUseLocalTime() {
+        val base = 1_758_200_000L
+        val dayStart = ListeningStats.startOfDaySeconds(base, zone, 0)
+        // 本地 09:30 与 21:30 各一条
+        val morning = dayStart + 9 * 3600 + 1800
+        val night = dayStart + 21 * 3600 + 1800
+        val s = ListeningStats.summarize(
+            listOf(rec(morning, ms = 1_000), rec(night, ms = 3_000)),
+            days = 0, nowSecs = night + 60, zone = zone)
+
+        assertEquals("24 个桶", 24, s.byHour.size)
+        assertEquals("9 点那条落在 9 号桶", 1_000L, s.byHour[9])
+        assertEquals("21 点那条落在 21 号桶", 3_000L, s.byHour[21])
+        assertEquals("峰值时段是 21 点", 21, s.peakHour)
+        assertEquals("其余桶为 0", 0L, s.byHour[15])
+    }
+
+    /** 歌手排行按累计时长降序,空歌手归到"未知歌手"而不是丢掉。 */
+    @Test
+    fun artistRankingSortsAndKeepsUnknown() {
+        val now = 1_758_200_000L
+        val s = ListeningStats.summarize(
+            listOf(
+                rec(now, id = "a", ms = 1_000, artist = "甲"),
+                rec(now + 10, id = "b", ms = 5_000, artist = "乙"),
+                rec(now + 20, id = "c", ms = 2_000, artist = ""),
+            ),
+            days = 0, nowSecs = now + 60, zone = zone)
+
+        assertEquals("三位(含未知)", 3, s.artists.size)
+        assertEquals("听最多的排第一", "乙", s.artists[0].key)
+        assertEquals("5 秒", 5_000L, s.artists[0].ms)
+        // 未知歌手 2 秒排在甲 1 秒前面 —— 断言按**实际排序**写,不按我脑补的顺序。
+        assertEquals("没写歌手的归到未知,不是丢掉", "未知歌手", s.artists[1].key)
+        assertEquals("2 秒", 2_000L, s.artists[1].ms)
+        assertEquals("甲垫底", "甲", s.artists[2].key)
+    }
+
+    /** 环比:今天跟昨天比。没有昨天时必须返回 nil,而不是编一个 0。 */
+    @Test
+    fun trendComparesAgainstPreviousWindow() {
+        val now = 1_758_200_000L
+        val today = ListeningStats.startOfDaySeconds(now, zone, 0)
+        val yesterday = ListeningStats.startOfDaySeconds(now, zone, 1)
+
+        // 昨天 1 分钟,今天 2 分钟 → 涨 100%
+        val s = ListeningStats.summarize(
+            listOf(
+                rec(yesterday + 3600, ms = 60_000),
+                rec(today + 3600, ms = 120_000),
+            ),
+            days = 1, nowSecs = now, zone = zone)
+        assertEquals("今天只算今天的", 120_000L, s.totalMs)
+        assertEquals("上一段是昨天", 60_000L, s.previousWindowMs)
+        assertEquals("涨了 100%", 1.0, s.changeRatio ?: -1.0, 0.001)
+    }
+
+    /** 看"全部"时没有"上一段",环比必须是 nil。 */
+    @Test
+    fun trendIsNullForAllTimeRange() {
+        val now = 1_758_200_000L
+        val s = ListeningStats.summarize(
+            listOf(rec(now, ms = 1_000)), days = 0, nowSecs = now, zone = zone)
+        assertEquals("全部区间没有可比窗口", null, s.changeRatio)
+    }
+
+    /** 连续天数从今天往回数,断一天就停。 */
+    @Test
+    fun streakCountsConsecutiveDaysBackFromToday() {
+        val now = 1_758_200_000L
+        val today = ListeningStats.startOfDaySeconds(now, zone, 0)
+        val s = ListeningStats.summarize(
+            listOf(
+                rec(today + 100, ms = 1_000),
+                rec(today - 86_400L + 100, ms = 1_000),   // 昨天
+                rec(today - 2 * 86_400L + 100, ms = 1_000), // 前天
+                rec(today - 4 * 86_400L + 100, ms = 1_000), // 大前天缺席,隔了一天
+            ),
+            days = 0, nowSecs = now, zone = zone)
+        assertEquals("今天+昨天+前天 = 3 天,到缺席那天断", 3, s.streakDays)
+    }
+
+    /** 今天没记录时连续天数归零 —— 不是从昨天开始数。 */
+    @Test
+    fun streakIsZeroWhenTodayHasNothing() {
+        val now = 1_758_200_000L
+        val yesterday = ListeningStats.startOfDaySeconds(now, zone, 1)
+        val s = ListeningStats.summarize(
+            listOf(rec(yesterday + 100, ms = 1_000)),
+            days = 0, nowSecs = now, zone = zone)
+        assertEquals("今天没听就不算连续", 0, s.streakDays)
+    }
 }

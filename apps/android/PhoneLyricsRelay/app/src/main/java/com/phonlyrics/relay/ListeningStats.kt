@@ -27,15 +27,41 @@ object ListeningStats {
     /// 一天的累计。
     data class DayTotal(val dayStartSecs: Long, val ms: Long)
 
+    /// 某个歌手(或时段)的累计。
+    data class Slice(val key: String, val ms: Long)
+
     data class Summary(
         val totalMs: Long,
         val tracks: List<TrackTotal>,
         val days: List<DayTotal>,
         val recordCount: Int,
+        /// 24 小时分布。下标 = 本地小时,值 = 毫秒。
+        val byHour: List<Long> = List(24) { 0L },
+        /// 歌手排行(按时长降序)。
+        val artists: List<Slice> = emptyList(),
+        /// 上一个等长窗口的总时长,给"环比"用。0 = 没法比(比如看"全部")。
+        val previousWindowMs: Long = 0L,
+        /// 连续有记录的天数(含今天)。
+        val streakDays: Int = 0,
     ) {
         val isEmpty: Boolean get() = recordCount == 0
+
         /// 平均每天听多久(按**有记录的天数**算,不是按窗口长度 —— 没用过的日子不该拉低均值)。
         val averagePerActiveDayMs: Long get() = if (days.isEmpty()) 0L else totalMs / days.size
+
+        /// 环比变化。nil = 上一个窗口没数据(不是"涨了 100%",别把无说成有)。
+        val changeRatio: Double?
+            get() {
+                if (previousWindowMs <= 0L) return null
+                return (totalMs - previousWindowMs).toDouble() / previousWindowMs.toDouble()
+            }
+
+        /// 听得最多的那个时段(0-23)。全是 0 时返回 nil。
+        val peakHour: Int?
+            get() {
+                val max = byHour.maxOrNull() ?: 0L
+                return if (max <= 0L) null else byHour.indexOf(max)
+            }
     }
 
     /**
@@ -67,11 +93,47 @@ object ListeningStats {
             .map { (day, rows) -> DayTotal(day, rows.sumOf { it.ms }) }
             .sortedBy { it.dayStartSecs }
 
+        // 时段分布:按本地小时归集。用户想知道"我什么时候听歌最多" ——
+        // 这个维度比"哪天听得多"更常被用到(比如判断睡前听得多不多)。
+        val hours = MutableList(24) { 0L }
+        for (r in window) {
+            val cal = Calendar.getInstance(zone.timeZone)
+            cal.timeInMillis = r.atSecs * 1000
+            hours[cal.get(Calendar.HOUR_OF_DAY)] += r.ms
+        }
+
+        // 歌手排行。空歌手归到"未知"而不是丢掉 —— 丢掉会让总时长对不上。
+        val byArtist = window.groupBy { it.artist.ifBlank { "未知歌手" } }
+            .map { (name, rows) -> Slice(name, rows.sumOf { it.ms }) }
+            .sortedByDescending { it.ms }
+
+        // 环比:取**等长**的上一段窗口。看"今天"就跟昨天比,看"7 天"就跟再往前 7 天比。
+        // days <= 0(全部)时不比 —— 没有"上一段全部",硬编一个基准就是编数字。
+        val previousMs = if (days > 0) {
+            val windowStart = startOfDaySeconds(nowSecs, zone, days - 1)
+            val previousStart = startOfDaySeconds(nowSecs, zone, days * 2 - 1)
+            records.filter { it.atSecs >= previousStart && it.atSecs < windowStart }
+                .sumOf { it.ms }
+        } else 0L
+
+        // 连续天数:从今天往回数,直到某天没有记录。
+        val dayStarts = byDay.map { it.dayStartSecs }.toSet()
+        var streak = 0
+        var cursor = startOfDaySeconds(nowSecs, zone, 0)
+        while (dayStarts.contains(cursor)) {
+            streak++
+            cursor = startOfDaySeconds(cursor - 86_400L, zone, 0)
+        }
+
         return Summary(
             totalMs = window.sumOf { it.ms },
             tracks = byTrack,
             days = byDay,
             recordCount = window.size,
+            byHour = hours,
+            artists = byArtist,
+            previousWindowMs = previousMs,
+            streakDays = streak,
         )
     }
 

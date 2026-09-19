@@ -15,8 +15,8 @@ android {
         // 两端是**同一个产品**,版本号分叉之后用户报问题时就分不清在说哪一对组合。
         // 0.2.0 是 2026-09-19 的界面重做版:四页悬浮导航、歌词页、统计页。
         // versionCode 是 Android 自己的单调递增整数,与展示版本无关,改展示版本不必动它。
-        versionCode = 6
-        versionName = "0.2.0"
+        versionCode = 7
+        versionName = "0.2.1"
     }
 
     buildTypes {

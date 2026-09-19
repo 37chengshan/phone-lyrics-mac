@@ -100,6 +100,10 @@ class MainActivity : AppCompatActivity() {
     private val statsChart by lazy { findViewById<android.widget.LinearLayout>(R.id.statsChart) }
     private val statsChartEmpty by lazy { findViewById<TextView>(R.id.statsChartEmpty) }
     private val statsTopList by lazy { findViewById<android.widget.LinearLayout>(R.id.statsTopList) }
+    private val statsTrend by lazy { findViewById<TextView>(R.id.statsTrend) }
+    private val statsStreak by lazy { findViewById<TextView>(R.id.statsStreak) }
+    private val statsHourChart by lazy { findViewById<android.widget.LinearLayout>(R.id.statsHourChart) }
+    private val statsArtistList by lazy { findViewById<android.widget.LinearLayout>(R.id.statsArtistList) }
     private val rangeToday by lazy { findViewById<TextView>(R.id.rangeToday) }
     private val rangeWeek by lazy { findViewById<TextView>(R.id.rangeWeek) }
     private val rangeMonth by lazy { findViewById<TextView>(R.id.rangeMonth) }
@@ -227,13 +231,33 @@ class MainActivity : AppCompatActivity() {
         items.forEach { (key, ids) ->
             val active = key == tab
             val (cell, icon, label) = ids
-            findViewById<View>(cell).background = androidx.core.content.ContextCompat.getDrawable(
+            val cellView = findViewById<View>(cell)
+            val iconView = findViewById<android.widget.ImageView>(icon)
+            val labelView = findViewById<TextView>(label)
+
+            val wasActive = cellView.isSelected
+            cellView.isSelected = active
+            cellView.background = androidx.core.content.ContextCompat.getDrawable(
                 this, if (active) R.drawable.nav_item_active_bg else R.drawable.nav_item_inactive_bg)
-            findViewById<android.widget.ImageView>(icon).imageTintList =
-                android.content.res.ColorStateList.valueOf(
-                    if (active) 0xFF7AA2FF.toInt() else 0xFF6B7484.toInt())
-            findViewById<TextView>(label).setTextColor(
-                if (active) 0xFFEEF1F5.toInt() else 0xFF6B7484.toInt())
+            iconView.imageTintList = android.content.res.ColorStateList.valueOf(
+                if (active) 0xFF7AA2FF.toInt() else 0xFF6B7484.toInt())
+            labelView.setTextColor(if (active) 0xFFEEF1F5.toInt() else 0xFF6B7484.toInt())
+
+            // 动画(2026-09-19 补):原来选中态是瞬间换色换底,点下去"啪"一下就到位,
+            // 没有任何过渡 —— 用户报的"底部栏动画不行"就是这个。
+            //
+            // 只给**刚被选中**的那一格播:全播的话另外三格会跟着抖一下,像在抢注意力。
+            // 弹一下(1.0 → 1.12 → 1.0)而不是单纯放大:回弹那下才有"按进去了"的手感。
+            if (active && !wasActive && !reduceMotion) {
+                iconView.scaleX = 1f
+                iconView.scaleY = 1f
+                iconView.animate()
+                    .scaleX(1.12f).scaleY(1.12f).setDuration(110)
+                    .withEndAction {
+                        iconView.animate().scaleX(1f).scaleY(1f).setDuration(130).start()
+                    }
+                    .start()
+            }
         }
 
         // 统计页是按需算的:切进去那一下算一次,不必每秒跟着曲目刷新跑。
@@ -655,8 +679,108 @@ class MainActivity : AppCompatActivity() {
         statsTotal.text = formatDuration(summary.totalMs)
         statsTracks.text = "${summary.tracks.size}"
         statsAvg.text = formatDuration(summary.averagePerActiveDayMs)
+        renderTrend(summary)
         renderDailyChart(summary)
         renderTopTracks(summary)
+        renderHourChart(summary)
+        renderArtistList(summary)
+    }
+
+    /// 环比 + 连续天数。
+    ///
+    /// ⚠️ 没有可比窗口时显示 "—" 而不是 "0%":"0%" 会被读成"和上一段持平",而事实是
+    /// **没法比**(比如看"全部"时根本没有"上一段")。把无说成有是最容易误导的一种显示。
+    private fun renderTrend(summary: ListeningStats.Summary) {
+        val ratio = summary.changeRatio
+        if (ratio == null) {
+            statsTrend.text = "—"
+            statsTrend.setTextColor(0xFF5C6470.toInt())
+        } else {
+            val percent = (kotlin.math.abs(ratio) * 100).toInt()
+            val sign = if (ratio >= 0) "+" else "−"
+            statsTrend.text = "$sign$percent%"
+            statsTrend.setTextColor(
+                if (ratio >= 0) 0xFF3DD68C.toInt() else 0xFFFFA657.toInt())
+        }
+        statsStreak.text = if (summary.streakDays > 0) "${summary.streakDays} 天" else "—"
+    }
+
+    /// 24 小时分布。细柱,横轴刻度在布局里。
+    private fun renderHourChart(summary: ListeningStats.Summary) {
+        statsHourChart.removeAllViews()
+        val peak = summary.byHour.maxOrNull() ?: 0L
+        if (peak <= 0L) return
+        val density = resources.displayMetrics.density
+        for (hour in 0..23) {
+            val ms = summary.byHour[hour]
+            val heightDp = (52 * (ms.toDouble() / peak)).toInt().coerceAtLeast(2)
+            val holder = android.widget.FrameLayout(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, -1, 1f)
+            }
+            val bar = View(this).apply {
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    (6 * density).toInt(), (heightDp * density).toInt()).apply {
+                    gravity = android.view.Gravity.BOTTOM or android.view.Gravity.CENTER_HORIZONTAL
+                }
+                // 峰值那一小时高亮 —— 一眼看出"我几点听得多",不用逐根比高度。
+                setBackgroundColor(
+                    if (ms == peak) 0xFF7AA2FF.toInt() else 0x807AA2FF.toInt())
+            }
+            holder.addView(bar)
+            statsHourChart.addView(holder)
+        }
+    }
+
+    /// 常听歌手前 8。
+    private fun renderArtistList(summary: ListeningStats.Summary) {
+        statsArtistList.removeAllViews()
+        val top = summary.artists.take(8)
+        if (top.isEmpty()) return
+        val peak = top.first().ms.coerceAtLeast(1L)
+        val density = resources.displayMetrics.density
+        for ((index, artist) in top.withIndex()) {
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = (if (index == 0) 12 else 10) * density.toInt()
+                }
+            }
+            // 名次固定宽度,让名字左缘对齐 —— 不等宽的话每行文字会缩进不一。
+            row.addView(TextView(this).apply {
+                text = "${index + 1}"
+                setTextColor(0xFF5C6470.toInt())
+                textSize = 12f
+                gravity = android.view.Gravity.CENTER
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    (18 * density).toInt(), -2)
+            })
+            row.addView(TextView(this).apply {
+                text = artist.key
+                setTextColor(0xFFD6DCE6.toInt())
+                textSize = 13.5f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, -2, 1f)
+            })
+            row.addView(TextView(this).apply {
+                text = formatDuration(artist.ms)
+                setTextColor(0xFF8B93A1.toInt())
+                textSize = 12f
+            })
+            statsArtistList.addView(row)
+            // 细条表示相对量级,压在名字下面。
+            statsArtistList.addView(android.widget.ProgressBar(
+                this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 1000
+                progress = (1000 * (artist.ms.toDouble() / peak)).toInt()
+                progressTintList = android.content.res.ColorStateList.valueOf(0xFF3DD68C.toInt())
+                progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x14FFFFFF)
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, (4 * density).toInt()).apply {
+                    topMargin = (3 * density).toInt()
+                }
+            })
+        }
     }
 
     /// 每日时长柱状图。用 LinearLayout + 权重画,不引图表库 —— 只有这一处要柱状,

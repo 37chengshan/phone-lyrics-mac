@@ -158,10 +158,24 @@ class RelayService : Service() {
 
     private fun publish(snapshot: QqPlaybackSnapshot) {
         val event = PlaybackEventDeriver.derive(previous, snapshot, snapshot.capturedAtMonotonicMs)
-        if (event == PlaybackEvent.HEARTBEAT && previous != null &&
-            snapshot.capturedAtMonotonicMs - previous!!.capturedAtMonotonicMs < 700) return
+        // ⚠️ 这道闸只用来**省网络流量**(700ms 内的重复心跳不必再发一条),
+        // 绝不能让它在闸门处 `return` 整个函数 ——
+        //
+        // 2026-09-19 真机故障就出在这儿:下面那两行 UI 发布原本写在 return 之后,
+        // 于是事件被判"太快"时,**曲目与歌词也一起不发了**。表现是 Mac 上正常
+        // (它有 1 秒心跳兜底)、手机界面却经常收不到更新 —— 用户报的"手机不显示歌曲名"
+        // 正是这个。所以闸门只决定"要不要入队发网络",不影响本地界面。
+        val tooSoonForNetwork = event == PlaybackEvent.HEARTBEAT && previous != null &&
+            snapshot.capturedAtMonotonicMs - previous!!.capturedAtMonotonicMs < 700
+
+        // ⚠️ 歌词换行**必须**带动事件:QQ 音乐每换一句歌词,TITLE 就变一次,而播放状态没变 ——
+        // derive() 只看状态与位置,于是仍判成 HEARTBEAT,再被上面那道闸拦掉。
+        // 不加这一条的话,开了通知栏歌词的歌在手机上一句都不会动。
+        val lyricChanged = previous?.lyricLine != snapshot.lyricLine
         previous = snapshot
-        queue.enqueue(factory.next(event, snapshot))
+        if (!tooSoonForNetwork || lyricChanged) {
+            queue.enqueue(factory.next(event, snapshot))
+        }
         updateNotification("同步中 · ${snapshot.title} · ${snapshot.artist}")
         // 把当前曲目发布给界面(2026-09-17)。用户实测反馈"状态显示不完整":原来界面上只有
         // 一个笼统的"运行中",看不到**正在同步哪首歌** —— 而这恰恰是判断"到底通没通"最直接的
