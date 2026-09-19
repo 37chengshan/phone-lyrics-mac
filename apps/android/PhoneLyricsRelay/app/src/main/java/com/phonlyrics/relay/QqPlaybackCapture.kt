@@ -66,7 +66,10 @@ class QqPlaybackCapture(context: Context, private val callbackHandler: Handler,
         val trackId = mediaId.ifEmpty { fixed.identity }
         return QqPlaybackSnapshot(trackId, fixed.title, fixed.artist, album, duration,
             position.coerceAtMost(if (duration > 0) duration else Long.MAX_VALUE), wireState, speed,
-            c.packageName, nowMs)
+            c.packageName, nowMs,
+            // 当前歌词行(2026-09-19):QQ 音乐通知栏那一行,**只给本机界面显示用**。
+            // 它就在这台手机上,不发给 Mac —— Mac 有自己的一整套歌词解析,收到这个只会打架。
+            lyricLine = fixed.lyricLine)
     }
 
     private fun activeSessions(): List<MediaController> = manager.getActiveSessions(listenerComponent).orEmpty()

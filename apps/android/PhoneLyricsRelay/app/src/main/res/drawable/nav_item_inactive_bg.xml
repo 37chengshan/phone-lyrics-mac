@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 导航项**未选中**态的底:完全透明。
+     存在的理由只是让代码里 active/inactive 走同一个 setBackground 调用 ——
+     否则未选中时要额外写一句 setBackground(null),那种分支迟早有人漏写。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#00000000" />
+    <corners android:radius="18dp" />
+</shape>
+

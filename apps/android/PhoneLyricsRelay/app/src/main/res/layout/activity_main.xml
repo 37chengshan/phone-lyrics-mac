@@ -1,153 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  2026-09-17 重做。原版是**一屏堆到底**的 LinearLayout:发现、地址、配对码、配对按钮、
-  测试按钮、权限按钮、状态文字全挤在一条滚动里,层次全靠间距区分 —— 用户实测反馈
-  「整个用户逻辑混乱」「要分页」。现在改成三段式:头部常驻状态,下面三个页签
-  (状态 / 连接 / 权限),同一时刻只显示一页。
+  2026-09-19 重做:导航改成 Figma 稿那种悬浮胶囊 + 独立圆形主按钮,
+  页面从三页扩到四页(状态 / 歌词 / 统计 / 设置)。
 
-  另一个必须处理的事:targetSdk 35 在 Android 15 上强制 edge-to-edge,内容会**画到系统
-  状态栏底下** —— 深色主题配深色状态栏,顶部那几行字正好糊在一起(用户实测「UI 被上边栏
-  挡住」)。这份布局不再指望主题里的 fitsSystemWindows,而是由 MainActivity 用
-  WindowInsets 给根布局加 padding,那样刘海/挖孔/手势条三种机型都能正确让位。 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  为什么用 FrameLayout 打底:圆形同步键要浮在内容之上、且与胶囊不在同一容器里 ——
+  稿子里两者是分离的,用 LinearLayout 竖排会把它们压进同一条,做不出那种错落。
+
+  底部留白:导航浮在内容上,每个页面的 ScrollView 底部都要留足空间,
+  否则最后一行内容会被胶囊盖住。统一 120dp。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#0B0D11"
-    android:orientation="vertical">
-
-    <!-- 头部:永远看得见的那一层"我现在是什么状态"。 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingStart="20dp"
-        android:paddingTop="14dp"
-        android:paddingEnd="20dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="歌词中继"
-                android:textColor="#EEF1F5"
-                android:textSize="21sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/statusPill"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/pill_bg"
-                android:paddingStart="11dp"
-                android:paddingTop="6dp"
-                android:paddingEnd="11dp"
-                android:paddingBottom="6dp"
-                android:text="未启动"
-                android:textColor="#FF7B72"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/headerDetail"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="尚未连接 Mac"
-            android:textColor="#8B93A1"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- 页签。用三个 Button 自己画,不引 TabLayout —— 这一页的选择很少,自己画能完全
-         控制选中态和切换动画,少一个要跟着升级的依赖。 -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="horizontal"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp">
-
-        <TextView
-            android:id="@+id/tabStatus"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="@drawable/tab_bg"
-            android:gravity="center"
-            android:paddingTop="9dp"
-            android:paddingBottom="9dp"
-            android:text="状态"
-            android:textColor="#EEF1F5"
-            android:textSize="13sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tabConnect"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/tab_bg"
-            android:gravity="center"
-            android:paddingTop="9dp"
-            android:paddingBottom="9dp"
-            android:text="连接"
-            android:textColor="#8B93A1"
-            android:textSize="13sp" />
-
-        <TextView
-            android:id="@+id/tabPerms"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:background="@drawable/tab_bg"
-            android:gravity="center"
-            android:paddingTop="9dp"
-            android:paddingBottom="9dp"
-            android:text="权限"
-            android:textColor="#8B93A1"
-            android:textSize="13sp" />
-    </LinearLayout>
+    android:background="#0B0D11">
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="12dp">
+        android:layout_height="match_parent">
 
-        <!-- ============ 页 1:状态 ============ -->
+        <!-- ================= 页 1:状态 ================= -->
         <ScrollView
             android:id="@+id/pageStatus"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipToPadding="false"
             android:fillViewport="true"
             android:paddingStart="20dp"
-            android:paddingEnd="20dp">
+            android:paddingEnd="20dp"
+            android:paddingBottom="120dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingBottom="24dp">
+                android:paddingTop="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="状态"
+                    android:textColor="#EEF1F5"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:id="@+id/syncState"
@@ -155,18 +59,18 @@
                         android:layout_height="wrap_content"
                         android:text="同步未启动"
                         android:textColor="#EEF1F5"
-                        android:textSize="16sp"
+                        android:textSize="17sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/syncHint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="5dp"
+                        android:layout_marginTop="6dp"
                         android:lineSpacingExtra="2dp"
-                        android:text="点下面的按钮开始同步"
+                        android:text="点右下角的按钮开始"
                         android:textColor="#8B93A1"
-                        android:textSize="12sp" />
+                        android:textSize="12.5sp" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -175,7 +79,7 @@
                     android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="match_parent"
@@ -188,52 +92,45 @@
                         android:id="@+id/nowTitle"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
+                        android:layout_marginTop="7dp"
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="—"
                         android:textColor="#EEF1F5"
-                        android:textSize="15sp"
+                        android:textSize="16sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/nowArtist"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="3dp"
+                        android:layout_marginTop="4dp"
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="还没有读到 QQ 音乐"
                         android:textColor="#8B93A1"
-                        android:textSize="12sp" />
+                        android:textSize="12.5sp" />
                 </LinearLayout>
 
-                <!-- 链路统计(2026-09-17,用户要求"仪表盘")。
-
-                     为什么要它:原来这一页只能给"运行中"这种非黑即白的结论,用户看不出
-                     它是不是**真的在正常工作** —— 服务活着但一条都发不出去,界面照样显示
-                     运行中。这四个数各回答一个具体问题:送出去了吗、失败过几次、快不快、
-                     最近一次是什么时候。 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="链路统计"
+                        android:text="链路"
                         android:textColor="#8B93A1"
                         android:textSize="12sp" />
 
-                    <!-- 四格数字。用 weight 均分,窄屏也不挤。 -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="12dp"
                         android:orientation="horizontal">
 
                         <LinearLayout
@@ -241,20 +138,17 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:orientation="vertical">
-
                             <TextView
                                 android:id="@+id/statSent"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="0"
+                                android:text="—"
                                 android:textColor="#EEF1F5"
-                                android:textSize="19sp"
+                                android:textSize="20sp"
                                 android:textStyle="bold" />
-
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="1dp"
                                 android:text="已发送"
                                 android:textColor="#5C6470"
                                 android:textSize="11sp" />
@@ -265,20 +159,17 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:orientation="vertical">
-
                             <TextView
                                 android:id="@+id/statFailed"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:text="0"
+                                android:text="—"
                                 android:textColor="#EEF1F5"
-                                android:textSize="19sp"
+                                android:textSize="20sp"
                                 android:textStyle="bold" />
-
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="1dp"
                                 android:text="失败"
                                 android:textColor="#5C6470"
                                 android:textSize="11sp" />
@@ -289,20 +180,17 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:orientation="vertical">
-
                             <TextView
                                 android:id="@+id/statLatency"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="—"
                                 android:textColor="#EEF1F5"
-                                android:textSize="19sp"
+                                android:textSize="20sp"
                                 android:textStyle="bold" />
-
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="1dp"
                                 android:text="延迟"
                                 android:textColor="#5C6470"
                                 android:textSize="11sp" />
@@ -313,96 +201,421 @@
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
                             android:orientation="vertical">
-
                             <TextView
                                 android:id="@+id/statLast"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:text="—"
                                 android:textColor="#EEF1F5"
-                                android:textSize="19sp"
+                                android:textSize="20sp"
                                 android:textStyle="bold" />
-
                             <TextView
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="1dp"
                                 android:text="最近"
                                 android:textColor="#5C6470"
                                 android:textSize="11sp" />
                         </LinearLayout>
                     </LinearLayout>
 
-                    <!-- 成功率条。视觉上比读一个百分数快 —— 满格就是全通。 -->
                     <ProgressBar
                         android:id="@+id/statBar"
                         style="@android:style/Widget.ProgressBar.Horizontal"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
+                        android:layout_marginTop="14dp"
                         android:max="100"
                         android:progress="0"
-                        android:progressTint="#3DD68C"
-                        android:progressBackgroundTint="#1FFFFFFF" />
+                        android:progressBackgroundTint="#1FFFFFFF"
+                        android:progressTint="#3DD68C" />
 
                     <TextView
                         android:id="@+id/statHint"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="9dp"
                         android:lineSpacingExtra="2dp"
                         android:text="开始同步后这里会显示实时数据"
                         android:textColor="#8B93A1"
                         android:textSize="12sp" />
                 </LinearLayout>
-
-                <Button
-                    android:id="@+id/toggle"
-                        app:backgroundTint="@color/btn_primary_tint"
-                        android:stateListAnimator="@animator/btn_press"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:paddingTop="14dp"
-                    android:paddingBottom="14dp"
-                    android:text="开始同步"
-                    android:textColor="#0B0D11"
-                    android:textSize="15sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/statusLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="14dp"
-                    android:lineSpacingExtra="3dp"
-                    android:textColor="#8B93A1"
-                    android:textSize="12sp" />
             </LinearLayout>
         </ScrollView>
 
-        <!-- ============ 页 2:连接 ============ -->
-        <ScrollView
-            android:id="@+id/pageConnect"
+        <!-- ================= 页 2:歌词 ================= -->
+        <LinearLayout
+            android:id="@+id/pageLyrics"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="120dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="歌词"
+                android:textColor="#EEF1F5"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/lyricTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="还没有在播放"
+                android:textColor="#8B93A1"
+                android:textSize="13sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/lyricPrev"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:minHeight="28dp"
+                android:textColor="#4B5464"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/lyricCurrent"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:gravity="center"
+                android:lineSpacingExtra="6dp"
+                android:minHeight="72dp"
+                android:text="在手机上用 QQ 音乐放一首歌"
+                android:textColor="#EEF1F5"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/lyricNext"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:minHeight="28dp"
+                android:textColor="#4B5464"
+                android:textSize="15sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/lyricHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:lineSpacingExtra="2dp"
+                android:text="歌词来自 QQ 音乐的通知栏显示。若没开，这一页只会显示曲目。"
+                android:textColor="#5C6470"
+                android:textSize="11.5sp" />
+        </LinearLayout>
+
+        <!-- ================= 页 3:统计 ================= -->
+        <ScrollView
+            android:id="@+id/pageStats"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
             android:fillViewport="true"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
+            android:paddingBottom="120dp"
             android:visibility="gone">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingBottom="24dp">
+                android:paddingTop="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="统计"
+                    android:textColor="#EEF1F5"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/rangeToday"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="@drawable/tab_bg"
+                        android:gravity="center"
+                        android:paddingTop="9dp"
+                        android:paddingBottom="9dp"
+                        android:text="今天"
+                        android:textColor="#EEF1F5"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/rangeWeek"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/tab_bg"
+                        android:gravity="center"
+                        android:paddingTop="9dp"
+                        android:paddingBottom="9dp"
+                        android:text="7 天"
+                        android:textColor="#8B93A1"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/rangeMonth"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/tab_bg"
+                        android:gravity="center"
+                        android:paddingTop="9dp"
+                        android:paddingBottom="9dp"
+                        android:text="30 天"
+                        android:textColor="#8B93A1"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/rangeAll"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/tab_bg"
+                        android:gravity="center"
+                        android:paddingTop="9dp"
+                        android:paddingBottom="9dp"
+                        android:text="全部"
+                        android:textColor="#8B93A1"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="horizontal"
+                    android:padding="18dp">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1.2"
+                        android:orientation="vertical">
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:contentDescription="总时长"
+                            android:src="@drawable/ic_stat_time"
+                            app:tint="#7AA2FF" />
+                        <TextView
+                            android:id="@+id/statsTotal"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="—"
+                            android:textColor="#EEF1F5"
+                            android:textSize="23sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="总时长"
+                            android:textColor="#5C6470"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:contentDescription="歌曲数"
+                            android:src="@drawable/ic_stat_track"
+                            app:tint="#3DD68C" />
+                        <TextView
+                            android:id="@+id/statsTracks"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="—"
+                            android:textColor="#EEF1F5"
+                            android:textSize="23sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="首歌"
+                            android:textColor="#5C6470"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+                        <ImageView
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:contentDescription="日均"
+                            android:src="@drawable/ic_stat_day"
+                            app:tint="#FFA657" />
+                        <TextView
+                            android:id="@+id/statsAvg"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="—"
+                            android:textColor="#EEF1F5"
+                            android:textSize="23sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="日均"
+                            android:textColor="#5C6470"
+                            android:textSize="11sp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="每日时长"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <LinearLayout
+                        android:id="@+id/statsChart"
+                        android:layout_width="match_parent"
+                        android:layout_height="120dp"
+                        android:layout_marginTop="14dp"
+                        android:baselineAligned="false"
+                        android:gravity="bottom"
+                        android:orientation="horizontal" />
+
+                    <TextView
+                        android:id="@+id/statsChartEmpty"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center"
+                        android:text="这段时间还没有记录"
+                        android:textColor="#4B5464"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="听得最多"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <LinearLayout
+                        android:id="@+id/statsTopList"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:orientation="vertical" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/btnClearStats"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:stateListAnimator="@animator/btn_press"
+                    android:text="清空统计"
+                    android:textColor="#FF7B72"
+                    app:backgroundTint="@color/btn_ghost_tint" />
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- ================= 页 4:设置 ================= -->
+        <ScrollView
+            android:id="@+id/pageSettings"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:fillViewport="true"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="120dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="设置"
+                    android:textColor="#EEF1F5"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="@drawable/panel_bg"
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="match_parent"
@@ -450,13 +663,13 @@
 
                     <Button
                         android:id="@+id/btnTest"
-                        app:backgroundTint="@color/btn_ghost_tint"
-                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginTop="10dp"
+                        android:stateListAnimator="@animator/btn_press"
                         android:text="测试连接"
-                        android:textColor="#EEF1F5" />
+                        android:textColor="#EEF1F5"
+                        app:backgroundTint="@color/btn_ghost_tint" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -465,7 +678,7 @@
                     android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="match_parent"
@@ -481,7 +694,7 @@
                         android:layout_marginTop="7dp"
                         android:text="尚未配对"
                         android:textColor="#FF7B72"
-                        android:textSize="13sp"
+                        android:textSize="13.5sp"
                         android:textStyle="bold" />
 
                     <EditText
@@ -500,13 +713,13 @@
 
                     <Button
                         android:id="@+id/btnPair"
-                        app:backgroundTint="@color/btn_primary_tint"
-                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
+                        android:stateListAnimator="@animator/btn_press"
                         android:text="配对并保存"
-                        android:textColor="#0B0D11" />
+                        android:textColor="#0B0D11"
+                        app:backgroundTint="@color/btn_primary_tint" />
 
                     <Button
                         android:id="@+id/btnUnpair"
@@ -525,62 +738,9 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="9dp"
                         android:lineSpacingExtra="2dp"
-                        android:visibility="gone"
                         android:textColor="#8B93A1"
-                        android:textSize="12sp" />
-                </LinearLayout>
-            </LinearLayout>
-        </ScrollView>
-
-        <!-- ============ 页 3:权限 ============ -->
-        <ScrollView
-            android:id="@+id/pagePerms"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:fillViewport="true"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:visibility="gone">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingBottom="24dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/panel_bg"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:id="@+id/permNotifState"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="通知使用权:未开启"
-                        android:textColor="#FF7B72"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:text="没有它读不到 QQ 音乐在放什么"
-                        android:textColor="#8B93A1"
-                        android:textSize="12sp" />
-
-                    <Button
-                        android:id="@+id/btnNotifAccess"
-                        app:backgroundTint="@color/btn_ghost_tint"
-                        android:stateListAnimator="@animator/btn_press"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="去开启"
-                        android:textColor="#EEF1F5" />
+                        android:textSize="12sp"
+                        android:visibility="gone" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -589,34 +749,70 @@
                     android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
-                        android:id="@+id/permBatteryState"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="电池优化:未关闭"
+                        android:text="权限"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/permNotifState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="9dp"
+                        android:text="通知使用权:未开启"
                         android:textColor="#FF7B72"
-                        android:textSize="14sp"
+                        android:textSize="13.5sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
+                        android:layout_marginTop="3dp"
+                        android:text="没有它读不到 QQ 音乐在放什么，也就没有歌词"
+                        android:textColor="#8B93A1"
+                        android:textSize="12sp" />
+
+                    <Button
+                        android:id="@+id/btnNotifAccess"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="9dp"
+                        android:stateListAnimator="@animator/btn_press"
+                        android:text="去开启"
+                        android:textColor="#EEF1F5"
+                        app:backgroundTint="@color/btn_ghost_tint" />
+
+                    <TextView
+                        android:id="@+id/permBatteryState"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="电池优化:未关闭"
+                        android:textColor="#FF7B72"
+                        android:textSize="13.5sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="3dp"
                         android:text="不关的话后台跑一会儿会被系统杀掉"
                         android:textColor="#8B93A1"
                         android:textSize="12sp" />
 
                     <Button
                         android:id="@+id/btnBattery"
-                        app:backgroundTint="@color/btn_ghost_tint"
-                        android:stateListAnimator="@animator/btn_press"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="9dp"
+                        android:stateListAnimator="@animator/btn_press"
                         android:text="去关闭"
-                        android:textColor="#EEF1F5" />
+                        android:textColor="#EEF1F5"
+                        app:backgroundTint="@color/btn_ghost_tint" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -625,7 +821,7 @@
                     android:layout_marginTop="12dp"
                     android:background="@drawable/panel_bg"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="match_parent"
@@ -638,14 +834,156 @@
                         android:id="@+id/diagText"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="7dp"
+                        android:layout_marginTop="8dp"
                         android:lineSpacingExtra="3dp"
-                        android:textIsSelectable="true"
                         android:textColor="#8B93A1"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        android:textIsSelectable="true" />
                 </LinearLayout>
             </LinearLayout>
         </ScrollView>
     </FrameLayout>
-</LinearLayout>
+
+    <!-- ================= 悬浮导航 ================= -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="14dp">
+
+        <LinearLayout
+            android:id="@+id/navPill"
+            android:layout_width="0dp"
+            android:layout_height="56dp"
+            android:layout_weight="1"
+            android:background="@drawable/nav_pill_bg"
+            android:elevation="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp">
+
+            <LinearLayout
+                android:id="@+id/navStatus"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@drawable/nav_item_active_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+                <ImageView
+                    android:id="@+id/navStatusIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="状态"
+                    android:src="@drawable/ic_tab_status" />
+                <TextView
+                    android:id="@+id/navStatusLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="状态"
+                    android:textColor="#8B93A1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navLyrics"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@drawable/nav_item_active_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+                <ImageView
+                    android:id="@+id/navLyricsIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="歌词"
+                    android:src="@drawable/ic_tab_lyrics" />
+                <TextView
+                    android:id="@+id/navLyricsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="歌词"
+                    android:textColor="#8B93A1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navStats"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@drawable/nav_item_active_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+                <ImageView
+                    android:id="@+id/navStatsIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="统计"
+                    android:src="@drawable/ic_tab_stats" />
+                <TextView
+                    android:id="@+id/navStatsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="统计"
+                    android:textColor="#8B93A1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/navSettings"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@drawable/nav_item_active_bg"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:orientation="vertical">
+                <ImageView
+                    android:id="@+id/navSettingsIcon"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:contentDescription="设置"
+                    android:src="@drawable/ic_tab_settings" />
+                <TextView
+                    android:id="@+id/navSettingsLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="设置"
+                    android:textColor="#8B93A1"
+                    android:textSize="10sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/syncFab"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/sync_fab_bg"
+            android:contentDescription="开始同步"
+            android:elevation="10dp"
+            android:scaleType="center"
+            android:src="@drawable/ic_sync_start" />
+    </LinearLayout>
+</FrameLayout>
 

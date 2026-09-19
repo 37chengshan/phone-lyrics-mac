@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 底部导航的悬浮胶囊(2026-09-19,按 Figma 稿)。
+
+     稿子里是:一条圆角胶囊托着四个图标,右边再单独浮一颗圆形主按钮 —— 两者不在同一个
+     容器里,所以这里只画胶囊本身,那颗圆按钮是独立的 View。
+
+     深色半透明底 + 一道极淡描边:胶囊压在内容上,得能看出"它是浮起来的"而不是页面的一条边。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#F0141926" />
+    <corners android:radius="28dp" />
+    <stroke android:width="1dp" android:color="#1FFFFFFF" />
+</shape>
+

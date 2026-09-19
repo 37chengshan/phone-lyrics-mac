@@ -25,7 +25,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
 class MainActivity : AppCompatActivity() {
-    private enum class Tab { STATUS, CONNECT, PERMS }
+    private enum class Tab { STATUS, LYRICS, STATS, SETTINGS }
 
     private var running = false
     private var selectedMac: DiscoveredMac? = null
@@ -64,9 +64,9 @@ class MainActivity : AppCompatActivity() {
     private val macIp by lazy { findViewById<EditText>(R.id.macIp) }
     private val macPort by lazy { findViewById<EditText>(R.id.macPort) }
     private val pairingCode by lazy { findViewById<EditText>(R.id.pairingCode) }
-    private val toggle by lazy { findViewById<Button>(R.id.toggle) }
-    private val statusPill by lazy { findViewById<TextView>(R.id.statusPill) }
-    private val headerDetail by lazy { findViewById<TextView>(R.id.headerDetail) }
+    // 2026-09-19:顶部那条常驻状态胶囊撤了 —— 新导航是四页结构,常驻头会跟页面标题抢位置。
+    // 它原来的两个信息(连接状态、当前曲目)分别落在状态页的两张卡上;同步开关挪到了右下那颗圆钮。
+    private val syncFab by lazy { findViewById<android.widget.ImageButton>(R.id.syncFab) }
     private val discoveryStatus by lazy { findViewById<TextView>(R.id.discoveryStatus) }
     private val pairState by lazy { findViewById<TextView>(R.id.pairState) }
     private val pairResult by lazy { findViewById<TextView>(R.id.pairResult) }
@@ -82,10 +82,31 @@ class MainActivity : AppCompatActivity() {
     private val statLast by lazy { findViewById<TextView>(R.id.statLast) }
     private val statBar by lazy { findViewById<android.widget.ProgressBar>(R.id.statBar) }
     private val statHint by lazy { findViewById<TextView>(R.id.statHint) }
-    private val statusLog by lazy { findViewById<TextView>(R.id.statusLog) }
     private val permNotifState by lazy { findViewById<TextView>(R.id.permNotifState) }
     private val permBatteryState by lazy { findViewById<TextView>(R.id.permBatteryState) }
     private val diagText by lazy { findViewById<TextView>(R.id.diagText) }
+
+    // ── 歌词页(2026-09-19) ──
+    private val lyricTrack by lazy { findViewById<TextView>(R.id.lyricTrack) }
+    private val lyricPrev by lazy { findViewById<TextView>(R.id.lyricPrev) }
+    private val lyricCurrent by lazy { findViewById<TextView>(R.id.lyricCurrent) }
+    private val lyricNext by lazy { findViewById<TextView>(R.id.lyricNext) }
+    private val lyricHint by lazy { findViewById<TextView>(R.id.lyricHint) }
+
+    // ── 统计页(2026-09-19) ──
+    private val statsTotal by lazy { findViewById<TextView>(R.id.statsTotal) }
+    private val statsTracks by lazy { findViewById<TextView>(R.id.statsTracks) }
+    private val statsAvg by lazy { findViewById<TextView>(R.id.statsAvg) }
+    private val statsChart by lazy { findViewById<android.widget.LinearLayout>(R.id.statsChart) }
+    private val statsChartEmpty by lazy { findViewById<TextView>(R.id.statsChartEmpty) }
+    private val statsTopList by lazy { findViewById<android.widget.LinearLayout>(R.id.statsTopList) }
+    private val rangeToday by lazy { findViewById<TextView>(R.id.rangeToday) }
+    private val rangeWeek by lazy { findViewById<TextView>(R.id.rangeWeek) }
+    private val rangeMonth by lazy { findViewById<TextView>(R.id.rangeMonth) }
+    private val rangeAll by lazy { findViewById<TextView>(R.id.rangeAll) }
+
+    /// 统计页当前看的区间(天)。0 = 全部。默认今天。
+    private var statsRangeDays = 1
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,15 +128,19 @@ class MainActivity : AppCompatActivity() {
             discoveryStatus.text = "已发现 ${mac.name}\n${mac.host}:${mac.port}" +
                 if (mac.pairing) "\nMac 正在等待配对码" else ""
             // 发现到 Mac 之后自动跳到「连接」页的下一步,省得用户自己找。
-            if (!isPaired()) switchTab(Tab.CONNECT)
+            // 发现到 Mac 之后自动跳到设置页的下一步(地址与配对都在那一页),省得用户自己找。
+            if (!isPaired()) switchTab(Tab.SETTINGS)
         } }, { message -> runOnUiThread {
             discoveryStatus.text = "$message\n可在下面手动填写地址"
         } })
         discovery.start()
 
-        findViewById<TextView>(R.id.tabStatus).setOnClickListener { switchTab(Tab.STATUS) }
-        findViewById<TextView>(R.id.tabConnect).setOnClickListener { switchTab(Tab.CONNECT) }
-        findViewById<TextView>(R.id.tabPerms).setOnClickListener { switchTab(Tab.PERMS) }
+        // 导航四项(2026-09-19)。整格可点,不只是图标 —— 胶囊里的格子本来就不大,
+        // 只让图标可点会让命中区比看上去小一圈。
+        findViewById<View>(R.id.navStatus).setOnClickListener { switchTab(Tab.STATUS) }
+        findViewById<View>(R.id.navLyrics).setOnClickListener { switchTab(Tab.LYRICS) }
+        findViewById<View>(R.id.navStats).setOnClickListener { switchTab(Tab.STATS) }
+        findViewById<View>(R.id.navSettings).setOnClickListener { switchTab(Tab.SETTINGS) }
         findViewById<Button>(R.id.btnPair).setOnClickListener { pair() }
         btnUnpair.setOnClickListener { confirmUnpair() }
         findViewById<Button>(R.id.btnTest).setOnClickListener { testConnection() }
@@ -123,7 +148,14 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
         findViewById<Button>(R.id.btnBattery).setOnClickListener { requestBatteryExemption() }
-        toggle.setOnClickListener { if (running) stopRelay() else startRelay() }
+        // 同步开关:右下那颗悬浮圆钮。点一下开始/停止,图标跟着换(见 applySyncFab)。
+        syncFab.setOnClickListener { if (running) stopRelay() else startRelay() }
+        // 统计区间切换
+        rangeToday.setOnClickListener { selectStatsRange(1) }
+        rangeWeek.setOnClickListener { selectStatsRange(7) }
+        rangeMonth.setOnClickListener { selectStatsRange(30) }
+        rangeAll.setOnClickListener { selectStatsRange(0) }
+        findViewById<Button>(R.id.btnClearStats).setOnClickListener { confirmClearStats() }
         switchTab(Tab.STATUS)
         refreshUi()
     }
@@ -166,29 +198,46 @@ class MainActivity : AppCompatActivity() {
         currentTab = tab
         val pages = mapOf(
             Tab.STATUS to findViewById<View>(R.id.pageStatus),
-            Tab.CONNECT to findViewById<View>(R.id.pageConnect),
-            Tab.PERMS to findViewById<View>(R.id.pagePerms),
-        )
-        val tabs = mapOf(
-            Tab.STATUS to findViewById<TextView>(R.id.tabStatus),
-            Tab.CONNECT to findViewById<TextView>(R.id.tabConnect),
-            Tab.PERMS to findViewById<TextView>(R.id.tabPerms),
+            Tab.LYRICS to findViewById<View>(R.id.pageLyrics),
+            Tab.STATS to findViewById<View>(R.id.pageStats),
+            Tab.SETTINGS to findViewById<View>(R.id.pageSettings),
         )
         pages.forEach { (key, page) ->
             val active = key == tab
             if (active && page.visibility != View.VISIBLE) {
                 page.alpha = 0f
                 page.visibility = View.VISIBLE
-                ObjectAnimator.ofFloat(page, View.ALPHA, 0f, 1f).setDuration(140).start()
+                if (reduceMotion) page.alpha = 1f
+                else ObjectAnimator.ofFloat(page, View.ALPHA, 0f, 1f).setDuration(140).start()
             } else if (!active) {
                 page.visibility = View.GONE
             }
         }
-        tabs.forEach { (key, label) ->
+
+        // 选中态同时改三样:那一格的底、图标着色、标签颜色。
+        //
+        // ⚠️ 三样都要动。只改文字颜色的话,在深色胶囊里"当前在哪"不够一眼可见 ——
+        // 这正是用户反复提的那个问题(Figma 稿里选中的那格有自己的浅底,不只是变色)。
+        val items = mapOf(
+            Tab.STATUS to Triple(R.id.navStatus, R.id.navStatusIcon, R.id.navStatusLabel),
+            Tab.LYRICS to Triple(R.id.navLyrics, R.id.navLyricsIcon, R.id.navLyricsLabel),
+            Tab.STATS to Triple(R.id.navStats, R.id.navStatsIcon, R.id.navStatsLabel),
+            Tab.SETTINGS to Triple(R.id.navSettings, R.id.navSettingsIcon, R.id.navSettingsLabel),
+        )
+        items.forEach { (key, ids) ->
             val active = key == tab
-            label.isSelected = active
-            label.setTextColor(if (active) 0xFF0B0D11.toInt() else 0xFF8B93A1.toInt())
+            val (cell, icon, label) = ids
+            findViewById<View>(cell).background = androidx.core.content.ContextCompat.getDrawable(
+                this, if (active) R.drawable.nav_item_active_bg else R.drawable.nav_item_inactive_bg)
+            findViewById<android.widget.ImageView>(icon).imageTintList =
+                android.content.res.ColorStateList.valueOf(
+                    if (active) 0xFF7AA2FF.toInt() else 0xFF6B7484.toInt())
+            findViewById<TextView>(label).setTextColor(
+                if (active) 0xFFEEF1F5.toInt() else 0xFF6B7484.toInt())
         }
+
+        // 统计页是按需算的:切进去那一下算一次,不必每秒跟着曲目刷新跑。
+        if (tab == Tab.STATS) renderStats()
     }
 
     /// 解除配对(2026-09-17)。清掉令牌并停掉同步 —— 见调用点上方那段注释,原来没有这个出口。
@@ -241,7 +290,7 @@ class MainActivity : AppCompatActivity() {
                         .putLong("pairedAtMs", System.currentTimeMillis())
                         .putString("macStableId", selectedMac?.stableId).apply()
                     pairingCode.setText("")
-                    // ⚠️ 这里**不能**再调 refreshUi():它会重写 pairState / statusLog,把刚写下的
+                    // ⚠️ 这里**不能**再调 refreshUi():它会重写 pairState,把刚写下的
                     // 结果盖掉 —— 上一版就是"配对成功了但界面看着没变化",用户实测报的就是这个。
                     // 现在配对结果写在**自己的**那一行(pairResult),refreshUi 不碰它。
                     showPairResult("配对成功,令牌已存进系统安全存储\n以后同一 Wi-Fi 下会自动重连", ok = true)
@@ -277,8 +326,9 @@ class MainActivity : AppCompatActivity() {
     private fun startRelay() {
         val host = macIp.text.toString().trim()
         val port = macPort.text.toString().toIntOrNull() ?: 8765
-        if (host.isEmpty()) { toast("请先自动发现或手动填写 Mac 地址"); switchTab(Tab.CONNECT); return }
-        if (!isPaired()) { toast("请先与 Mac 配对"); switchTab(Tab.CONNECT); return }
+        // 这两条的落点从「连接」页换成「设置」页 —— 地址与配对都搬到那里了(2026-09-19)。
+        if (host.isEmpty()) { toast("请先自动发现或手动填写 Mac 地址"); switchTab(Tab.SETTINGS); return }
+        if (!isPaired()) { toast("请先与 Mac 配对"); switchTab(Tab.SETTINGS); return }
         getSharedPreferences("relay", MODE_PRIVATE).edit()
             .putString("ip", host).putInt("port", port).putBoolean("running", true).apply()
         // ⚠️ 服务启动失败(比如权限问题)会抛异常,必须接住:否则 Activity 自己崩,
@@ -415,34 +465,33 @@ class MainActivity : AppCompatActivity() {
         applyStatusPill()
         applyNowPlaying()
         applyDashboard()
+        // 歌词跟着每秒那拍走(2026-09-19):通知栏歌词每句都在变,而这一拍本来就是
+        // "拉会随时间变的东西",放这儿正合适。含"值没变就什么都不做"的守卫,
+        // 所以常态下它只做一次字符串比较。
+        applyLyrics()
     }
 
-    /// 状态胶囊的文案与配色。抽出来是为了让两条刷新路径共用 —— 否则"每秒那条"和"完整那条"
-    /// 迟早各写一份,表现成同一个状态下两处显示不一致。
+    /// 同步状态与那颗悬浮圆钮(2026-09-19)。
+    ///
+    /// 抽出来是为了让两条刷新路径共用 —— 否则"每秒那条"和"完整那条"迟早各写一份,
+    /// 表现成同一个状态下两处显示不一致。
     private fun applyStatusPill() {
         val paired = lastKnownPaired
-        val pillText = when {
-            running -> "运行中"
-            paired -> "已配对"
-            else -> "未配对"
+        syncState.text = when {
+            running -> "同步已开启"
+            paired -> "就绪,等待开始"
+            else -> "同步未启动"
         }
-        // 状态变化时轻微弹一下。这是整页最该被注意到的那个字 —— 用户点完「开始同步」第一眼
-        // 就看它有没有变成绿色的「运行中」,而原来它是瞬间换字,没有任何"它变了"的提示。
-        if (statusPill.text.toString() != pillText) {
-            statusPill.text = pillText
-            if (!reduceMotion) {
-                statusPill.scaleX = 0.9f
-                statusPill.scaleY = 0.9f
-                statusPill.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
-            }
-        }
-        statusPill.setTextColor(if (running || paired) 0xFF3DD68C.toInt() else 0xFFFF7B72.toInt())
-        headerDetail.text = when {
+        syncHint.text = when {
+            running && !lastKnownNotifEnabled -> "但没有通知使用权,读不到 QQ 音乐 —— 去「设置」页开启"
             running -> "正在同步到 ${macIp.text}:${macPort.text}"
-            paired -> "已配对,点「开始同步」开始"
-            else -> "尚未连接 Mac"
+            paired -> "点右下角的按钮开始把播放状态推到 Mac"
+            else -> "先到「设置」页和 Mac 配对"
         }
-        toggle.text = if (running) "停止同步" else "开始同步"
+        // 圆钮的图标与描述跟着状态换:播放三角 = 可开始,方块 = 正在跑(点了就停)。
+        // contentDescription 也要跟着换,否则用读屏的人听到的永远是"开始同步"。
+        syncFab.setImageResource(if (running) R.drawable.ic_sync_stop else R.drawable.ic_sync_start)
+        syncFab.contentDescription = if (running) "停止同步" else "开始同步"
     }
 
     /// 当前曲目那两行。见 refreshUi 里那一段的注释。
@@ -529,6 +578,180 @@ class MainActivity : AppCompatActivity() {
             stats.failed > 0 -> "有 ${stats.failed} 条重试后仍未送达,详见下方诊断记录"
             stats.sent < 3 -> "链路正常,正在采集"
             else -> "链路正常 · 成功率 ${(rate * 100).toInt()}%"
+        }
+    }
+
+    /// 歌词页(2026-09-19)。
+    ///
+    /// 数据**全部来自本机**:QQ 音乐开着通知栏歌词时,那一行就在元数据的 TITLE 里
+    /// (见 QqMetadataResolver)。这一页不发网络请求、也不依赖 Mac。
+    ///
+    /// 上一句是推断的:通知栏只给当前这一行,不给上下文。做法是把上一次显示的留在原位
+    /// —— 每来新的一句,旧的顺下去。拖进度条回跳时会短暂对不上,下一句一到就追上。
+    private fun applyLyrics() {
+        val (title, artist, _) = RelayLog.nowPlaying(this)
+        val line = RelayLog.currentLyric(this)
+
+        lyricTrack.text = when {
+            title.isNotBlank() && artist.isNotBlank() -> "$title · $artist"
+            title.isNotBlank() -> title
+            else -> "还没有在播放"
+        }
+
+        if (line.isBlank()) {
+            lyricCurrent.text = if (running) "等待歌词…" else "在手机上用 QQ 音乐放一首歌"
+            lyricPrev.text = ""
+            lyricNext.text = ""
+            lyricHint.text = when {
+                !running -> "歌词来自 QQ 音乐的通知栏显示。开始同步后这里会跟着唱。"
+                !lastKnownNotifEnabled -> "没有通知使用权,读不到歌词 —— 去「设置」页开启。"
+                else -> "在 QQ 音乐里打开「通知栏显示歌词」,这里就会跟着唱。"
+            }
+            return
+        }
+
+        if (lyricCurrent.text.toString() != line) {
+            lyricPrev.text = lyricCurrent.text
+            lyricNext.text = ""
+            lyricCurrent.text = line
+            if (!reduceMotion) {
+                lyricCurrent.alpha = 0.35f
+                lyricCurrent.animate().alpha(1f).setDuration(220).start()
+            }
+        }
+        lyricHint.text = "歌词来自 QQ 音乐的通知栏显示"
+    }
+
+    /// 统计区间切换。
+    private fun selectStatsRange(days: Int) {
+        statsRangeDays = days
+        val items = listOf(
+            Triple(rangeToday, 1, "今天"),
+            Triple(rangeWeek, 7, "7 天"),
+            Triple(rangeMonth, 30, "30 天"),
+            Triple(rangeAll, 0, "全部"),
+        )
+        for ((view, value, _) in items) {
+            val active = value == days
+            view.isSelected = active
+            view.setTextColor(if (active) 0xFFEEF1F5.toInt() else 0xFF8B93A1.toInt())
+            view.setTypeface(null, if (active) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        }
+        renderStats()
+    }
+
+    /// 渲染统计页。数据来自本机 ListeningLog —— 见那个文件头注里为什么不从 Mac 要。
+    private fun renderStats() {
+        val summary = ListeningLog.summarize(this, statsRangeDays)
+        if (summary.isEmpty) {
+            statsTotal.text = "—"
+            statsTracks.text = "—"
+            statsAvg.text = "—"
+            statsChart.removeAllViews()
+            statsChartEmpty.visibility = View.VISIBLE
+            statsTopList.removeAllViews()
+            return
+        }
+        statsTotal.text = formatDuration(summary.totalMs)
+        statsTracks.text = "${summary.tracks.size}"
+        statsAvg.text = formatDuration(summary.averagePerActiveDayMs)
+        renderDailyChart(summary)
+        renderTopTracks(summary)
+    }
+
+    /// 每日时长柱状图。用 LinearLayout + 权重画,不引图表库 —— 只有这一处要柱状,
+    /// 为它背一个依赖不划算,而且那样也不好跟着主题改色。
+    private fun renderDailyChart(summary: ListeningStats.Summary) {
+        statsChart.removeAllViews()
+        statsChartEmpty.visibility = View.GONE
+        if (summary.days.isEmpty()) {
+            statsChartEmpty.visibility = View.VISIBLE
+            return
+        }
+        val peak = summary.days.maxOf { it.ms }.coerceAtLeast(1L)
+        val density = resources.displayMetrics.density
+        for (day in summary.days) {
+            val heightDp = (100 * (day.ms.toDouble() / peak)).toInt().coerceAtLeast(3)
+            val bar = View(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    (14 * density).toInt(), (heightDp * density).toInt())
+                setBackgroundColor(0xFF7AA2FF.toInt())
+            }
+            val holder = android.widget.FrameLayout(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(0, -1, 1f)
+            }
+            val lp = bar.layoutParams as android.widget.LinearLayout.LayoutParams
+            lp.gravity = android.view.Gravity.BOTTOM
+            bar.layoutParams = lp
+            holder.addView(bar)
+            statsChart.addView(holder)
+        }
+    }
+
+    /// 听得最多列表。取前 5 首 —— 这一页是概览,不是完整榜单。
+    private fun renderTopTracks(summary: ListeningStats.Summary) {
+        statsTopList.removeAllViews()
+        val top = summary.tracks.take(5)
+        if (top.isEmpty()) return
+        val peak = top.first().totalMs.coerceAtLeast(1L)
+        val density = resources.displayMetrics.density
+        for ((index, track) in top.withIndex()) {
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = (if (index == 0) 12 else 14) * density.toInt()
+                }
+            }
+            row.addView(TextView(this).apply {
+                text = "${index + 1}. ${track.title.ifBlank { "未知曲目" }}" +
+                    if (track.artist.isNotBlank()) " — ${track.artist}" else ""
+                setTextColor(0xFFD6DCE6.toInt())
+                textSize = 13.5f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            row.addView(android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 1000
+                progress = (1000 * (track.totalMs.toDouble() / peak)).toInt()
+                progressTintList = android.content.res.ColorStateList.valueOf(0xFF7AA2FF.toInt())
+                progressBackgroundTintList = android.content.res.ColorStateList.valueOf(0x14FFFFFF)
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, (6 * density).toInt()).apply {
+                    topMargin = (5 * density).toInt()
+                }
+            })
+            row.addView(TextView(this).apply {
+                text = formatDuration(track.totalMs)
+                setTextColor(0xFF5C6470.toInt())
+                textSize = 11f
+                layoutParams = android.widget.LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = (3 * density).toInt()
+                }
+            })
+            statsTopList.addView(row)
+        }
+    }
+
+    /// 清空统计(二次确认 —— 删了拿不回来)。
+    private fun confirmClearStats() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("清空统计?")
+            .setMessage("本机记录的收听时长会全部删除,之后从零累计。这个操作不可撤销。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("清空") { _, _ ->
+                ListeningLog.clear(this)
+                renderStats()
+                toast("统计已清空")
+            }
+            .show()
+    }
+
+    /// 毫秒 → 人读的时长。小于一小时给"12 分"(不带秒 —— 这一页是概览,秒是噪音)。
+    private fun formatDuration(ms: Long): String {
+        val minutes = ms / 60_000L
+        return when {
+            minutes <= 0L -> "不足 1 分"
+            minutes < 60L -> "$minutes 分"
+            else -> "${minutes / 60L} 小时 ${minutes % 60L} 分"
         }
     }
 

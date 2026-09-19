@@ -57,6 +57,15 @@ class QqMetadataResolver {
         val artist: String,
         val identity: String,
         val lyricLayout: Boolean,
+        /// **当前歌词行** —— 通知栏歌词模式下,那个被我们当"假歌名"过滤掉的 TITLE,
+        /// 恰恰就是此刻正在唱的那一句(2026-09-19)。
+        ///
+        /// 这个字段的由来值得记一笔:同一个值,**对歌词搜索是个麻烦,对显示却是正 нужное**。
+        /// 所以它不是"顺便透出",而是这条链路本来就有的信息 —— 之前只想着把它过滤干净,
+        /// 漏看了它正是要显示的东西。
+        ///
+        /// nil = 当前不是歌词布局(或那一行是制作人员署名,不该当歌词显示)。
+        val lyricLine: String?,
     )
 
     fun resolve(rawTitle: String, rawArtist: String, rawAlbum: String, durationMs: Long): Resolved {
@@ -81,6 +90,14 @@ class QqMetadataResolver {
 
         var title = rawTitle
         var artist = rawArtist
+        // 当前歌词行:只有**歌词模式**下、且那一行不是制作人员署名时才算数。
+        //
+        // 判据就两条:① 处于歌词布局(见上),② 不带冒号 —— 带冒号的是「编曲:钱雷」
+        // 这类署名行,把它当歌词显示会很怪。
+        //
+        // ⚠️ 非歌词模式下这里恒为 nil:那种模式 TITLE 就是真歌名,拿它当歌词会把歌名
+        // 重复显示在歌词位。
+        val lyricLine = if (lyricLayout && rawTitle.isNotEmpty() && !titleLooksLikeCredit) rawTitle else null
         if (lyricLayout) {
             splitSongAndArtist(rawArtist)?.let { (song, name) ->
                 title = song
@@ -102,7 +119,7 @@ class QqMetadataResolver {
             append(rawArtist)
         }
 
-        return Resolved(title, artist, identity, lyricLayout)
+        return Resolved(title, artist, identity, lyricLayout, lyricLine)
     }
 
     /**

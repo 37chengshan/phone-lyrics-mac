@@ -19,6 +19,12 @@ data class QqPlaybackSnapshot(
     val speed: Float,
     val packageName: String,
     val capturedAtMonotonicMs: Long,
+    /// 当前歌词行(2026-09-19)。**只在本机显示用,不进协议**。
+    ///
+    /// 来源是 QQ 音乐通知栏那一行(见 QqMetadataResolver.lyricLine)。它本来就在这台手机上,
+    /// 也不该发给 Mac:Mac 有自己的一整套歌词解析,收到这个反而会跟它的结果打架。
+    /// 默认 null —— 非歌词模式下没有这个信息,各测试构造点也不必逐个改。
+    val lyricLine: String? = null,
 )
 
 data class PlaybackEnvelope(

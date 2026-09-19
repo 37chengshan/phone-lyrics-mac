@@ -22,6 +22,7 @@ object RelayLog {
     private const val NOW_TITLE_KEY = "nowTitle"
     private const val NOW_ARTIST_KEY = "nowArtist"
     private const val NOW_PLAYING_KEY = "nowPlaying"
+    private const val NOW_LYRIC_KEY = "nowLyric"
     private const val SENT_COUNT_KEY = "sentCount"
     private const val FAILED_COUNT_KEY = "failedCount"
     private const val LAST_LATENCY_KEY = "lastLatencyMs"
@@ -96,6 +97,22 @@ object RelayLog {
             .putBoolean(NOW_PLAYING_KEY, playing)
             .apply()
     }
+
+    /// 发布当前歌词行(2026-09-19)。
+    ///
+    /// 跟 publishNowPlaying 分开两个方法而不是加个参数:歌词行的更新频率比曲目信息高得多
+    /// (每句一次),而曲目信息几秒才动一回。合在一起会让曲目那几个值每句歌词都被重写一遍,
+    /// 界面按值比较的"变了才动"逻辑就白做了。
+    fun publishLyric(context: Context, line: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(NOW_LYRIC_KEY, line)
+            .apply()
+    }
+
+    /// 读当前歌词行。空串 = 此刻没有歌词可显示(歌没播、或那首歌没有通知栏歌词)。
+    fun currentLyric(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(NOW_LYRIC_KEY, "").orEmpty()
 
     /// 清掉当前曲目(停止同步时)。不清的话下次打开界面会显示上一首歌,像是还在播。
     fun clearNowPlaying(context: Context) {

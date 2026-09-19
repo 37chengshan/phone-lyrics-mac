@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 同步主按钮的圆形底(2026-09-19,按 Figma 稿那颗独立圆钮)。
+
+     用 selector 而不是静态 shape:这一颗是所有按钮里点得最频繁的,按下必须有反馈
+     (跟 btn_primary_tint 同一个理由 —— 之前那批按钮没反馈,用户实测报过)。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_enabled="false">
+        <shape android:shape="oval">
+            <solid android:color="#4D7AA2FF" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="oval">
+            <solid android:color="#5B85E0" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#7AA2FF" />
+        </shape>
+    </item>
+</selector>
+

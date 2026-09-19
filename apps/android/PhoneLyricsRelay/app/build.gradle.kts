@@ -13,11 +13,10 @@ android {
         targetSdk = 35
         // ⚠️ 跟 Mac 端(`LYRIMUSE_VERSION`,写进 CFBundleShortVersionString)保持同一个号:
         // 两端是**同一个产品**,版本号分叉之后用户报问题时就分不清在说哪一对组合。
-        // 0.1.5 是 2026-09-19 修「通知栏歌词」元数据错位的那一版(手机端 100% 成功、
-        // Mac 端没歌词 —— 坏的是内容不是连接,见 QqMetadataResolver 头注)。
+        // 0.2.0 是 2026-09-19 的界面重做版:四页悬浮导航、歌词页、统计页。
         // versionCode 是 Android 自己的单调递增整数,与展示版本无关,改展示版本不必动它。
-        versionCode = 5
-        versionName = "0.1.5"
+        versionCode = 6
+        versionName = "0.2.0"
     }
 
     buildTypes {

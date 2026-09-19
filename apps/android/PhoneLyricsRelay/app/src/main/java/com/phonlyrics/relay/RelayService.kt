@@ -169,6 +169,14 @@ class RelayService : Service() {
         // 重建后读一次就能拿到最新值,不需要收发配对的时序假设。
         RelayLog.publishNowPlaying(applicationContext, snapshot.title, snapshot.artist,
             snapshot.state == WirePlaybackState.PLAYING)
+        // 当前歌词行(2026-09-19)。QQ 音乐开着"通知栏歌词"时,那一行就在元数据的 TITLE 里 ——
+        // 也正是我之前当"假歌名"过滤掉的东西。同一个值,对搜索是噪声、对显示是正 нужное。
+        // 没有歌词行时传空串,让界面知道该退回收起状态。
+        RelayLog.publishLyric(applicationContext, snapshot.lyricLine.orEmpty())
+        // 顺手记一条收听(见 ListeningLog 头注)。只在真在播时记,暂停/停止不计时。
+        if (snapshot.state == WirePlaybackState.PLAYING) {
+            ListeningLog.note(applicationContext, snapshot)
+        }
     }
 
     private fun notification(text: String): Notification {
